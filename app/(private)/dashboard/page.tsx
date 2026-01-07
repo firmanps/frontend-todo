@@ -9,6 +9,7 @@ import { Sidebar, SidebarTrigger } from "@/components/Sidebar";
 import { TodoFormModal } from "@/components/TodoFormModal";
 import { TodoItem } from "@/components/TodoItem";
 import { TodoPagination } from "@/components/TodoPagination";
+import { useAuth } from "@/contexts/AuthContext";
 import { Todo, TodoStatus } from "@/types/todo";
 import { CheckCircle2, Clock, ListTodo, Trophy } from "lucide-react";
 
@@ -16,6 +17,7 @@ const ITEMS_PER_PAGE = 5;
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { isAuthenticated, isLoading } = useAuth();
 
   const [todos, setTodos] = useState<Todo[]>([]);
   const [search, setSearch] = useState("");
@@ -27,13 +29,14 @@ export default function DashboardPage() {
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
 
+  // Proteksi route: redirect ke /auth jika belum login
   useEffect(() => {
-    const user = localStorage.getItem("user");
-    if (!user) {
+    if (!isLoading && !isAuthenticated) {
       router.replace("/auth");
       return;
     }
 
+    // Load todos dari localStorage
     const savedTodos = localStorage.getItem("todos");
     if (savedTodos) {
       const parsed = JSON.parse(savedTodos).map((t: Todo) => ({
@@ -43,7 +46,7 @@ export default function DashboardPage() {
       }));
       setTodos(parsed);
     }
-  }, [router]);
+  }, [isAuthenticated, isLoading, router]);
 
   useEffect(() => {
     localStorage.setItem("todos", JSON.stringify(todos));

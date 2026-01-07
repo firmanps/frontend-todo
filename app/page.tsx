@@ -37,8 +37,8 @@ export default function HomePage() {
             <Image
               src="/icon2.png"
               alt="Logo"
-              width={200}
-              height={200}
+              width={3000}
+              height={3000}
               className="h-10 w-10 shrink-0 rounded-sm"
               sizes="32px"
               priority

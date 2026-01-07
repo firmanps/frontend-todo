@@ -1,6 +1,8 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
+import { getCsrfToken } from "@/lib/axios";
 import { cn } from "@/lib/utils";
 import { LayoutDashboard, LogOut, Menu, User, X } from "lucide-react";
 import Image from "next/image";
@@ -16,12 +18,39 @@ interface SidebarProps {
 export function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { user, isAuthenticated } = useAuth();
 
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("todos");
-    router.replace("/");
-    onClose?.();
+  const handleLogout = async () => {
+    try {
+      // Dapatkan CSRF token terlebih dahulu
+      const csrfToken = await getCsrfToken();
+
+      // Hit logout endpoint
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include", // Include cookies
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrfToken && { "X-CSRF-Token": csrfToken }), // Sertakan CSRF token jika ada
+        },
+      });
+
+      if (response.ok) {
+        // Logout sukses, redirect ke auth page
+        router.replace("/auth");
+        onClose?.();
+      } else {
+        // Jika logout gagal, tetap redirect ke auth page
+        console.error("Logout failed:", await response.json());
+        router.replace("/auth");
+        onClose?.();
+      }
+    } catch (error) {
+      console.error("Logout error:", error);
+      // Jika error, tetap redirect ke auth page
+      router.replace("/auth");
+      onClose?.();
+    }
   };
 
   const navItems = [
@@ -97,8 +126,35 @@ export function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
           })}
         </nav>
 
-        {/* Footer / Logout (PASTI DI BAWAH) */}
-        <div className="mt-auto border-t border-border p-3">
+        {/* Footer / User Info & Logout (PASTI DI BAWAH) */}
+        <div className="mt-auto border-t border-border p-3 space-y-2">
+          {/* User Info */}
+          {isAuthenticated && user && (
+            <div className="flex items-center gap-3 rounded-lg px-3 py-2 bg-secondary/50">
+              {user.profile?.image ? (
+                <Image
+                  src={user.profile.image}
+                  width={40}
+                  height={40}
+                  alt={user.username}
+                  className="w-10 h-10 rounded-full"
+                />
+              ) : (
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold">
+                  {user.username.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">
+                  {user.username}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {user.email}
+                </p>
+              </div>
+            </div>
+          )}
+
           <Button
             variant="ghost"
             onClick={handleLogout}
