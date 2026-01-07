@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Space_Grotesk } from "next/font/google";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const font = Space_Grotesk({
@@ -11,13 +12,20 @@ const font = Space_Grotesk({
 export const metadata: Metadata = {
   title: "TaskFlow",
   description: "Task management app for better productivity",
-  icons: "./icon.png",
+  icons: "./icon2.png",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${font.variable} antialiased font-sans `}>{children}</body>
+      <body className={`${font.variable} antialiased font-sans `}>
+        <main>{children}</main>
+        <Toaster richColors position="top-right" />
+      </body>
     </html>
   );
 }

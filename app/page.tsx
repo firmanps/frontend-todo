@@ -37,9 +37,9 @@ export default function HomePage() {
             <Image
               src="/icon2.png"
               alt="Logo"
-              width={32}
-              height={32}
-              className="h-8 w-8 shrink-0 rounded-sm"
+              width={200}
+              height={200}
+              className="h-10 w-10 shrink-0 rounded-sm"
               sizes="32px"
               priority
             />
@@ -61,7 +61,7 @@ export default function HomePage() {
       {/* Main */}
       <main className="flex-1">
         {/* Hero + Features */}
-        <section className="relative overflow-hidden">
+        <section className="relative isolate overflow-hidden">
           {/* Background decoration */}
           <div className="pointer-events-none absolute left-1/2 -top-24 -z-10 h-[min(34rem,90vw)] w-[min(34rem,90vw)] -translate-x-1/2 rounded-full bg-primary/10 blur-3xl" />
 

@@ -3,14 +3,14 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
 import { ArrowRight, CheckCircle2, Lock, Mail, User } from "lucide-react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 
 export default function AuthPage() {
   const router = useRouter();
-  const { toast } = useToast();
 
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -23,28 +23,43 @@ export default function AuthPage() {
     e.preventDefault();
     setIsLoading(true);
 
-    await new Promise((r) => setTimeout(r, 1000));
+    try {
+      // simulasi request API
+      await new Promise((r) => setTimeout(r, 1000));
 
-    localStorage.setItem(
-      "user",
-      JSON.stringify({
-        id: "1",
-        name: isLogin ? "User" : name,
-        email,
-      })
-    );
+      // contoh validasi error (simulasi)
+      if (!email || !password) {
+        throw new Error("Email dan password wajib diisi");
+      }
 
-    toast({
-      title: isLogin
-        ? "Selamat datang kembali! 👋"
-        : "Akun berhasil dibuat! 🎉",
-      description: isLogin
-        ? "Berhasil masuk ke akun Anda."
-        : "Selamat datang di TaskFlow.",
-    });
+      // mock auth success
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          id: "1",
+          name: isLogin ? "User" : name,
+          email,
+        })
+      );
 
-    setIsLoading(false);
-    router.push("/dashboard");
+      toast.success(
+        isLogin ? "Berhasil masuk ke akun Anda" : "Akun berhasil dibuat",
+        {
+          description: isLogin
+            ? "Selamat datang kembali di TaskFlow."
+            : "Selamat datang di TaskFlow.",
+        }
+      );
+
+      router.push("/dashboard");
+    } catch (error) {
+      toast.error("Terjadi kesalahan ❌", {
+        description:
+          error instanceof Error ? error.message : "Silakan coba lagi.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -53,9 +68,17 @@ export default function AuthPage() {
       <div className="flex flex-1 items-center justify-center px-6 py-12">
         <div className="w-full max-w-md animate-fade-in">
           {/* Logo */}
-          <div className="mb-8 flex items-center gap-3">
-            <div className="gradient-primary flex h-10 w-10 items-center justify-center rounded-xl">
-              <CheckCircle2 className="h-6 w-6 text-primary-foreground" />
+          <div className="mb-3 flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Image
+                src="/icon2.png"
+                alt="Logo"
+                width={200}
+                height={200}
+                className="h-10 w-10 shrink-0 rounded-lg"
+                sizes="32px"
+                priority
+              />
             </div>
             <span className="text-2xl font-bold text-foreground">TaskFlow</span>
           </div>
@@ -76,11 +99,11 @@ export default function AuthPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             {!isLogin && (
               <div className="space-y-2">
-                <Label>Nama Lengkap</Label>
+                <Label>Username</Label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    placeholder="Nama lengkap"
+                    placeholder="Username"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="pl-10"
