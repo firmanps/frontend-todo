@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Space_Grotesk } from "next/font/google";
 import { Toaster } from "sonner";
+import { CsrfTokenProvider } from "@/components/CsrfTokenProvider";
+import { AuthProvider } from "@/contexts/AuthContext";
 import "./globals.css";
 
 const font = Space_Grotesk({
@@ -23,8 +25,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${font.variable} antialiased font-sans `}>
-        <main>{children}</main>
-        <Toaster richColors position="top-right" />
+        <CsrfTokenProvider>
+          <AuthProvider>
+            <main>{children}</main>
+            <Toaster richColors position="top-right" />
+          </AuthProvider>
+        </CsrfTokenProvider>
       </body>
     </html>
   );

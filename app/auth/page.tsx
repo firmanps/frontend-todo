@@ -3,14 +3,16 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getCsrfToken } from "@/lib/axios";
 import { ArrowRight, CheckCircle2, Lock, Mail, User } from "lucide-react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export default function AuthPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -19,43 +21,117 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
+  // Set mode login jika ada query parameter dari redirect register
+  useEffect(() => {
+    const mode = searchParams.get("mode");
+    if (mode === "login") {
+      setIsLogin(true);
+    }
+  }, [searchParams]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      // simulasi request API
-      await new Promise((r) => setTimeout(r, 1000));
-
-      // contoh validasi error (simulasi)
+      // Validasi input
       if (!email || !password) {
         throw new Error("Email dan password wajib diisi");
       }
 
-      // mock auth success
-      localStorage.setItem(
-        "user",
-        JSON.stringify({
-          id: "1",
-          name: isLogin ? "User" : name,
-          email,
-        })
-      );
+      if (!isLogin && !name) {
+        throw new Error("Username wajib diisi");
+      }
 
-      toast.success(
-        isLogin ? "Berhasil masuk ke akun Anda" : "Akun berhasil dibuat",
-        {
-          description: isLogin
-            ? "Selamat datang kembali di TaskFlow."
-            : "Selamat datang di TaskFlow.",
+      if (isLogin) {
+        // Dapatkan CSRF token terlebih dahulu
+        const csrfToken = await getCsrfToken();
+
+        // Login request melalui Next.js API route (proxy)
+        const loginResponse = await fetch("/api/auth/login", {
+          method: "POST",
+          credentials: "include", // Include cookies
+          headers: {
+            "Content-Type": "application/json",
+            ...(csrfToken && { "X-CSRF-Token": csrfToken }), // Sertakan CSRF token jika ada
+          },
+          body: JSON.stringify({
+            email,
+            password,
+          }),
+        });
+
+        const loginData = await loginResponse.json();
+
+        if (!loginResponse.ok) {
+          throw new Error(
+            loginData.message || loginData.error || "Login gagal"
+          );
         }
-      );
 
-      router.push("/dashboard");
-    } catch (error) {
+        // Redirect ke path yang diminta sebelumnya (dari query param 'next') atau ke dashboard
+        // Authentication menggunakan cookies (httpOnly) dari backend, tidak perlu localStorage
+        const nextPath = decodeURIComponent(
+          searchParams.get("next") || "/dashboard"
+        );
+
+        toast.success(loginData.message || "Berhasil masuk ke akun Anda", {
+          description: "Selamat datang kembali di TaskFlow.",
+        });
+
+        // Delay untuk memastikan cookies ter-set di browser sebelum redirect
+        // Cookies dari backend sudah di-forward oleh API route menggunakan NextResponse.cookies
+        // Setelah cookies ter-set, middleware akan mengecek dengan /v1/user/me
+        // Jika cookies valid, middleware akan allow access
+        // Jika cookies tidak valid, middleware akan redirect ke /auth
+        setTimeout(() => {
+          window.location.href = nextPath;
+        }, 500);
+      } else {
+        // Dapatkan CSRF token terlebih dahulu
+        const csrfToken = await getCsrfToken();
+
+        // Register request melalui Next.js API route (proxy)
+        const registerResponse = await fetch("/api/auth/register", {
+          method: "POST",
+          credentials: "include", // Include cookies
+          headers: {
+            "Content-Type": "application/json",
+            ...(csrfToken && { "X-CSRF-Token": csrfToken }), // Sertakan CSRF token jika ada
+          },
+          body: JSON.stringify({
+            username: name,
+            email,
+            password,
+          }),
+        });
+
+        const registerData = await registerResponse.json();
+
+        if (!registerResponse.ok) {
+          throw new Error(
+            registerData.message || registerData.error || "Registrasi gagal"
+          );
+        }
+
+        toast.success("Akun berhasil dibuat", {
+          description: "Silakan masuk dengan akun yang baru dibuat.",
+        });
+
+        // Redirect ke halaman auth dengan mode login
+        router.push("/auth?mode=login");
+        // Reset form
+        setEmail("");
+        setPassword("");
+        setName("");
+      }
+    } catch (error: any) {
+      // Handle error dari API
+      const errorMessage =
+        error?.message || "Terjadi kesalahan. Silakan coba lagi.";
+
       toast.error("Terjadi kesalahan ❌", {
-        description:
-          error instanceof Error ? error.message : "Silakan coba lagi.",
+        description: errorMessage,
       });
     } finally {
       setIsLoading(false);
@@ -73,8 +149,8 @@ export default function AuthPage() {
               <Image
                 src="/icon2.png"
                 alt="Logo"
-                width={200}
-                height={200}
+                width={2000}
+                height={2000}
                 className="h-10 w-10 shrink-0 rounded-lg"
                 sizes="32px"
                 priority
