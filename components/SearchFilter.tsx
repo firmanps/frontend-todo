@@ -1,20 +1,24 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { ArrowUpDown, CalendarDays, Clock, Search } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { TodoStatus } from "@/types/todo";
+import { ArrowUpDown, Search } from "lucide-react";
 
 interface SearchFilterProps {
   search: string;
   onSearchChange: (value: string) => void;
   sortOrder: "newest" | "oldest";
-  onSortChange: (order: "newest" | "oldest") => void;
+  onSortChange: (value: "newest" | "oldest") => void;
+  statusFilter: TodoStatus | "ALL";
+  onStatusFilterChange: (value: TodoStatus | "ALL") => void;
 }
 
 export function SearchFilter({
@@ -22,48 +26,49 @@ export function SearchFilter({
   onSearchChange,
   sortOrder,
   onSortChange,
+  statusFilter,
+  onStatusFilterChange,
 }: SearchFilterProps) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row">
-      {/* Search */}
       <div className="relative flex-1">
-        <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Cari tugas..."
           className="pl-10"
-          aria-label="Cari tugas"
         />
       </div>
 
-      {/* Sort */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="min-w-[140px] gap-2">
-            <ArrowUpDown className="h-4 w-4" />
-            {sortOrder === "newest" ? "Terbaru" : "Terlama"}
-          </Button>
-        </DropdownMenuTrigger>
+      <Select
+        value={statusFilter}
+        onValueChange={(value) =>
+          onStatusFilterChange(value as TodoStatus | "ALL")
+        }
+      >
+        <SelectTrigger className="w-full sm:w-[150px]">
+          <SelectValue placeholder="Filter status" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Semua Status</SelectItem>
+          <SelectItem value="TODO">Todo</SelectItem>
+          <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+          <SelectItem value="SUCCESS">Success</SelectItem>
+        </SelectContent>
+      </Select>
 
-        <DropdownMenuContent align="end" className="w-[160px]">
-          <DropdownMenuItem
-            onClick={() => onSortChange("newest")}
-            className="cursor-pointer gap-2"
-          >
-            <Clock className="h-4 w-4" />
-            Terbaru
-          </DropdownMenuItem>
-
-          <DropdownMenuItem
-            onClick={() => onSortChange("oldest")}
-            className="cursor-pointer gap-2"
-          >
-            <CalendarDays className="h-4 w-4" />
-            Terlama
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() =>
+          onSortChange(sortOrder === "newest" ? "oldest" : "newest")
+        }
+        className="w-full sm:w-auto"
+      >
+        <ArrowUpDown className="mr-2 h-4 w-4" />
+        {sortOrder === "newest" ? "Terbaru" : "Terlama"}
+      </Button>
     </div>
   );
 }

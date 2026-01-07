@@ -2,14 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  CheckCircle2,
-  LayoutDashboard,
-  LogOut,
-  Menu,
-  User,
-  X,
-} from "lucide-react";
+import { LayoutDashboard, LogOut, Menu, User, X } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -56,10 +50,15 @@ export function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
       >
         {/* Header / Logo */}
         <div className="flex items-center justify-between border-b border-border p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl gradient-primary">
-              <CheckCircle2 className="h-5 w-5 text-primary-foreground" />
-            </div>
+          <div className="flex items-center gap-2">
+            <Image
+              src="/icon2.png"
+              width={2000}
+              height={2000}
+              alt="icons"
+              className="w-8 h-8 rounded-lg"
+              priority
+            />
             <span className="text-xl font-bold text-foreground">TaskFlow</span>
           </div>
 
@@ -124,7 +123,7 @@ export function SidebarTrigger({ onClick }: { onClick: () => void }) {
       aria-label="Open sidebar"
       className="shrink-0"
     >
-      <Menu className="h-5 w-5" />
+      <Menu className="h-8 w-8" />
     </Button>
   );
 }
