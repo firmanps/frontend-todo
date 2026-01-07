@@ -134,8 +134,8 @@ export function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
               {user.profile?.image ? (
                 <Image
                   src={user.profile.image}
-                  width={40}
-                  height={40}
+                  width={2000}
+                  height={2000}
                   alt={user.username}
                   className="w-10 h-10 rounded-full"
                 />
