@@ -252,9 +252,10 @@ const ProfilePage = () => {
                       <Image
                         src={imagePreview}
                         alt="Preview"
-                        width={96}
-                        height={96}
-                        className="w-full h-full object-cover"
+                        width={1000}
+                        height={1000}
+                        className="w-full h-full object-contain"
+                        priority
                       />
                     </div>
                   ) : user.profile?.image ? (
@@ -262,9 +263,9 @@ const ProfilePage = () => {
                       <Image
                         src={user.profile.image}
                         alt={user.username}
-                        width={96}
-                        height={96}
-                        className="w-full h-full object-cover"
+                        width={1000}
+                        height={1000}
+                        className="w-full h-full object-contain"
                       />
                     </div>
                   ) : (
