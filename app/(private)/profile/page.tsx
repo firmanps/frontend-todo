@@ -2,19 +2,27 @@
 
 import { Sidebar, SidebarTrigger } from "@/components/Sidebar";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { getCsrfToken } from "@/lib/axios";
-import { Camera, KeyIcon, Mail, Save, User } from "lucide-react";
+import { toast } from "@/lib/toast";
+import { Camera, KeyIcon, Mail, Save, Trash2, User } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
 
 const ProfilePage = () => {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading: authLoading, refetch } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading, refetch, logout } = useAuth();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -23,6 +31,8 @@ const ProfilePage = () => {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [todosTotal, setTodosTotal] = useState(0);
@@ -66,8 +76,8 @@ const ProfilePage = () => {
       }
 
       // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("Ukuran gambar maksimal 5MB");
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error("Ukuran gambar maksimal 2MB");
         if (fileInputRef.current) {
           fileInputRef.current.value = "";
         }
@@ -171,6 +181,52 @@ const ProfilePage = () => {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+
+    try {
+      // Dapatkan CSRF token terlebih dahulu
+      const csrfToken = await getCsrfToken();
+
+      // Hit delete account endpoint
+      const response = await fetch("/api/user/deleteme", {
+        method: "DELETE",
+        credentials: "include", // Include cookies (access_token httpOnly)
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrfToken && { "X-CSRF-Token": csrfToken }), // Sertakan CSRF token jika ada
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || data.error || "Gagal menghapus akun");
+      }
+
+      // Success: show toast
+      toast.success(data.message || "Akun berhasil dihapus", {
+        description: "Anda akan diarahkan ke halaman login",
+      });
+
+      // Close dialog
+      setDeleteDialogOpen(false);
+
+      // Backend sudah menghapus cookie access_token via Set-Cookie header
+      // API route sudah forward Set-Cookie untuk clear cookie di browser
+      // Trigger logout untuk clear state dan redirect
+      setTimeout(() => {
+        logout("Account deleted successfully. Please login again.");
+      }, 500);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Gagal menghapus akun";
+      toast.error(errorMessage);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const getInitials = (fullName: string) => {
     return fullName
       .trim()
@@ -266,6 +322,8 @@ const ProfilePage = () => {
                         width={1000}
                         height={1000}
                         className="w-full h-full object-contain"
+                        loading="eager"
+                        priority
                       />
                     </div>
                   ) : (
@@ -411,8 +469,86 @@ const ProfilePage = () => {
               </div>
             </div>
           </div>
+
+          {/* Danger Zone - Delete Account */}
+          <div className="mt-6 bg-card rounded-xl p-6 shadow-soft border border-red-200 dark:border-red-800/50">
+            <div>
+              <div className=" border-border">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="flex-1">
+                    <h4 className="font-medium text-foreground mb-1">
+                      Hapus Akun
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      Setelah menghapus akun, semua data Anda akan dihapus
+                      secara permanen dan tidak dapat dikembalikan.
+                    </p>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    onClick={() => setDeleteDialogOpen(true)}
+                    className="sm:shrink-0"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Hapus Akun
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </main>
+
+      {/* Delete Account Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="text-destructive">
+              Hapus Akun Permanen?
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              Tindakan ini tidak dapat dibatalkan. Semua data Anda akan dihapus
+              secara permanen, termasuk:
+            </DialogDescription>
+            <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+              <ul className="list-disc list-inside space-y-1">
+                <li>Profil dan informasi akun</li>
+                <li>Semua tugas dan data terkait</li>
+                <li>Riwayat aktivitas</li>
+              </ul>
+              <p className="mt-3 font-medium text-foreground">
+                Apakah Anda yakin ingin melanjutkan?
+              </p>
+            </div>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={isDeleting}
+            >
+              Batal
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteAccount}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-destructive-foreground/30 border-t-destructive-foreground rounded-full animate-spin" />
+                  Menghapus...
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <Trash2 className="h-4 w-4" />
+                  Ya, Hapus Akun
+                </span>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

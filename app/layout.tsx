@@ -1,8 +1,8 @@
+import { CsrfTokenProvider } from "@/components/CsrfTokenProvider";
+import { Toaster } from "@/components/ui/sonner";
+import { AuthProvider } from "@/contexts/AuthContext";
 import type { Metadata } from "next";
 import { Space_Grotesk } from "next/font/google";
-import { Toaster } from "sonner";
-import { CsrfTokenProvider } from "@/components/CsrfTokenProvider";
-import { AuthProvider } from "@/contexts/AuthContext";
 import "./globals.css";
 
 const font = Space_Grotesk({
@@ -28,7 +28,7 @@ export default function RootLayout({
         <CsrfTokenProvider>
           <AuthProvider>
             <main>{children}</main>
-            <Toaster richColors position="top-right" />
+            <Toaster position="top-right" />
           </AuthProvider>
         </CsrfTokenProvider>
       </body>

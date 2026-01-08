@@ -5,7 +5,17 @@ const BACKEND_URL =
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    // Handle empty body atau invalid JSON
+    let body;
+    try {
+      const text = await request.text();
+      body = text ? JSON.parse(text) : {};
+    } catch (error) {
+      return NextResponse.json(
+        { error: "Invalid JSON in request body" },
+        { status: 400 }
+      );
+    }
 
     // Ambil cookies dari request client
     const cookies = request.cookies.toString();
@@ -47,13 +57,15 @@ export async function POST(request: NextRequest) {
           const value = valueParts.join("="); // Handle values that contain "="
           
           if (name && value !== undefined) {
-            // Parse attributes
+            // Parse attributes - IMPORTANT: preserve all flags from backend
             const options: any = {};
+            let hasHttpOnly = false;
+            
             for (let i = 1; i < parts.length; i++) {
-              const part = parts[i];
+              const part = parts[i].trim();
               const equalIndex = part.indexOf("=");
-              const key = equalIndex > 0 ? part.substring(0, equalIndex) : part;
-              const val = equalIndex > 0 ? part.substring(equalIndex + 1) : undefined;
+              const key = equalIndex > 0 ? part.substring(0, equalIndex).trim() : part.trim();
+              const val = equalIndex > 0 ? part.substring(equalIndex + 1).trim() : undefined;
               const lowerKey = key.toLowerCase();
               
               if (lowerKey === "path") {
@@ -66,8 +78,11 @@ export async function POST(request: NextRequest) {
                 if (val) {
                   options.expires = new Date(val);
                 }
-              } else if (lowerKey === "httponly") {
+              } else if (lowerKey === "httponly" || lowerKey === "http-only" || key === "HttpOnly") {
+                // Preserve HttpOnly flag - CRITICAL for security
+                // Handle both lowercase and mixed case (HttpOnly)
                 options.httpOnly = true;
+                hasHttpOnly = true;
               } else if (lowerKey === "secure") {
                 options.secure = true;
               } else if (lowerKey === "samesite") {
@@ -76,9 +91,27 @@ export async function POST(request: NextRequest) {
               }
             }
             
+            // CRITICAL: For access_token or any auth-related cookie, ensure httpOnly is ALWAYS set
+            // This is a security requirement - access tokens must never be accessible via JavaScript
+            const cookieNameLower = name.toLowerCase();
+            if (
+              cookieNameLower.includes("access_token") || 
+              cookieNameLower.includes("access-token") ||
+              cookieNameLower.includes("token") ||
+              cookieNameLower === "access_token"
+            ) {
+              options.httpOnly = true;
+              hasHttpOnly = true;
+            }
+            
             // Set cookie menggunakan NextResponse.cookies API
+            // All flags from backend are preserved
             nextResponse.cookies.set(name, value, options);
-            console.log(`Cookie set: ${name} (httpOnly: ${options.httpOnly || false})`);
+            
+            // Log untuk debugging (remove in production)
+            if (process.env.NODE_ENV === "development") {
+              console.log(`Cookie set: ${name} (httpOnly: ${options.httpOnly || false}, secure: ${options.secure || false})`);
+            }
           }
         } catch (error) {
           console.error(`Error parsing cookie: ${cookieString}`, error);

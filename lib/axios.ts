@@ -12,16 +12,24 @@ const BASE_URL =
 // CSRF Token storage
 let csrfToken: string | null = null;
 let csrfTokenPromise: Promise<string> | null = null;
+let csrfTokenTimestamp: number | null = null;
+const CSRF_TOKEN_TTL = 30 * 60 * 1000; // 30 menit (token dianggap expired setelah 30 menit)
 
 // Fungsi untuk fetch CSRF token
-const fetchCsrfToken = async (): Promise<string> => {
-  // Jika sudah ada token, return langsung
-  if (csrfToken) {
+const fetchCsrfToken = async (forceRefresh = false): Promise<string> => {
+  // Cek apakah token masih valid (belum expired)
+  const now = Date.now();
+  if (
+    !forceRefresh &&
+    csrfToken &&
+    csrfTokenTimestamp &&
+    now - csrfTokenTimestamp < CSRF_TOKEN_TTL
+  ) {
     return csrfToken;
   }
 
   // Jika sedang fetching, return promise yang sama
-  if (csrfTokenPromise) {
+  if (csrfTokenPromise && !forceRefresh) {
     return csrfTokenPromise;
   }
 
@@ -43,10 +51,14 @@ const fetchCsrfToken = async (): Promise<string> => {
         throw new Error("CSRF token not found in response");
       }
       csrfToken = data.csrfToken;
+      csrfTokenTimestamp = Date.now(); // Simpan timestamp saat token di-fetch
       csrfTokenPromise = null;
       return csrfToken as string;
     })
     .catch((error) => {
+      // Reset token jika fetch gagal
+      csrfToken = null;
+      csrfTokenTimestamp = null;
       csrfTokenPromise = null;
       console.error("Error fetching CSRF token:", error);
       throw error;
@@ -100,39 +112,91 @@ axiosInstance.interceptors.request.use(
   }
 );
 
+// Guard flag untuk mencegah multiple logout events
+let isLoggingOut = false;
+
 // Response interceptor - untuk handle error global
 axiosInstance.interceptors.response.use(
   (response: AxiosResponse) => {
     return response;
   },
   async (error: AxiosError) => {
+    // Skip jika sedang dalam proses logout
+    if (isLoggingOut) {
+      return Promise.reject(error);
+    }
+    
     // Handle error berdasarkan status code
     if (error.response) {
       switch (error.response.status) {
         case 401:
-          // Unauthorized - redirect ke login
+        case 404:
+          // Unauthorized atau User not found (akun terhapus) - trigger logout
+          // Check jika ini endpoint auth
+          const requestUrl = error.config?.url || "";
+          const isAuthEndpoint =
+            requestUrl.includes("/user/me") ||
+            requestUrl.includes("/auth/");
+          
+          // CRITICAL: Skip logout logic jika sedang di halaman auth
+          // Ini mencegah infinite loop karena logout akan redirect ke /auth yang trigger request lagi
           if (typeof window !== "undefined") {
-            localStorage.removeItem("user");
-            window.location.href = "/auth";
+            const currentPath = window.location.pathname;
+            const isOnAuthPage = currentPath === "/auth" || currentPath.startsWith("/auth");
+            const isOnHomePage = currentPath === "/";
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'axios.ts:132',message:'401/404 error in interceptor',data:{requestUrl,isAuthEndpoint,currentPath,isOnAuthPage,isOnHomePage,isLoggingOut,willTriggerLogout:isAuthEndpoint && !isLoggingOut && !isOnAuthPage && !isOnHomePage},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
+            
+            if (isAuthEndpoint && !isLoggingOut && !isOnAuthPage && !isOnHomePage) {
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'axios.ts:142',message:'Dispatching auth:logout event',data:{status:error.response?.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+              // #endregion
+              // Set flag untuk mencegah multiple events
+              isLoggingOut = true;
+              
+              // Trigger logout via event untuk di-handle oleh AuthContext
+              // AuthContext akan handle toast dan redirect, jadi kita tidak perlu duplicate
+              const event = new CustomEvent("auth:logout", {
+                detail: {
+                  message:
+                    error.response?.status === 404
+                      ? "Account deleted. Please login again."
+                      : "Session expired. Please login again.",
+                },
+              });
+              window.dispatchEvent(event);
+            }
           }
           break;
         case 403:
           // Forbidden - mungkin CSRF token invalid, coba refresh
           const errorMessage = (error.response.data as any)?.message || "";
+          const errorData = (error.response.data as any) || {};
+          
+          // Jika error terkait CSRF token atau token invalid, refresh token
           if (
             errorMessage.toLowerCase().includes("csrf") ||
-            errorMessage.toLowerCase().includes("token")
+            errorMessage.toLowerCase().includes("token") ||
+            errorMessage.toLowerCase().includes("invalid") ||
+            errorData.error?.toLowerCase().includes("csrf") ||
+            errorData.error?.toLowerCase().includes("token")
           ) {
-            // Reset dan refresh CSRF token
+            // Reset dan refresh CSRF token dengan force refresh
             resetCsrfToken();
             try {
-              await fetchCsrfToken();
+              const newToken = await fetchCsrfToken(true);
               // Retry request jika config tersedia
-              if (error.config) {
+              if (error.config && newToken) {
+                // Update CSRF token di config
+                error.config.headers = error.config.headers || {};
+                error.config.headers["X-CSRF-Token"] = newToken;
                 return axiosInstance.request(error.config);
               }
             } catch (refreshError) {
               console.error("Failed to refresh CSRF token:", refreshError);
+              // Jika refresh gagal, reset token dan biarkan user refresh page
+              resetCsrfToken();
             }
           }
           console.error("Forbidden: Anda tidak memiliki akses");
@@ -214,14 +278,17 @@ export const initializeCsrfToken = async (): Promise<void> => {
 export const resetCsrfToken = (): void => {
   csrfToken = null;
   csrfTokenPromise = null;
+  csrfTokenTimestamp = null;
 };
 
 // Export fungsi untuk mendapatkan CSRF token (untuk digunakan di fetch request)
-export const getCsrfToken = async (): Promise<string | null> => {
+export const getCsrfToken = async (forceRefresh = false): Promise<string | null> => {
   try {
-    return await fetchCsrfToken();
+    return await fetchCsrfToken(forceRefresh);
   } catch (error) {
     console.error("Failed to get CSRF token:", error);
+    // Jika error, reset token dan return null
+    resetCsrfToken();
     return null;
   }
 };
