@@ -142,3 +142,28 @@ export async function updateTodo(
   const rawTodo = data?.data ?? data;
   return normalizeTodo(rawTodo, todoId);
 }
+
+// ✅ ADD: deleteTodo
+export async function deleteTodo(todoId: string): Promise<{ message?: string }> {
+  const csrfToken = await getCsrfToken().catch(() => "");
+
+  const res = await fetch(`/api/todo/${todoId}`, {
+    method: "DELETE",
+    credentials: "include",
+    cache: "no-store",
+    headers: {
+      ...(csrfToken && { "X-CSRF-Token": csrfToken }),
+    },
+  });
+
+  const data = await safeJson(res);
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(data?.message || "Session expired. Please login again.");
+    }
+    throw new Error(data?.message || data?.error || "Gagal menghapus tugas");
+  }
+
+  return data ?? { message: "Deleted" };
+}
