@@ -1,50 +1,44 @@
+
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://todo.firmanps.com/api";
+export async function GET(req: NextRequest) {
+  const BACKEND_URL = process.env.BACKEND_URL ?? "https://todo.firmanps.com";
 
-export async function GET(request: NextRequest) {
   try {
-    // Ambil cookies dari request client
-    const cookies = request.cookies.toString();
+    const cookieHeader = req.headers.get("cookie") ?? "";
 
-    // Ambil CSRF token dari header request
-    const csrfToken = request.headers.get("X-CSRF-Token");
-
-    // Validasi user dengan endpoint /v1/user/me
-    const response = await fetch(`${BACKEND_URL}/v1/user/me`, {
+    const upstream = await fetch(`${BACKEND_URL}/api/v1/user/me`, {
       method: "GET",
       headers: {
-        "Content-Type": "application/json",
-        ...(cookies && { Cookie: cookies }), // Forward cookies (access_token httpOnly ikut kebawa)
-        ...(csrfToken && { "X-CSRF-Token": csrfToken }), // Forward CSRF token jika ada
+        accept: "application/json",
+        ...(cookieHeader ? { cookie: cookieHeader } : {}),
       },
       cache: "no-store",
     });
 
-    // Handle empty response atau non-JSON response
-    let data;
-    const contentType = response.headers.get("content-type");
-    
-    if (contentType && contentType.includes("application/json")) {
-      try {
-        const text = await response.text();
-        data = text ? JSON.parse(text) : {};
-      } catch (error) {
-        console.error("Error parsing JSON response:", error);
-        data = { error: "Invalid JSON response" };
-      }
+    const text = await upstream.text();
+
+    const res = new NextResponse(text, {
+      status: upstream.status,
+      headers: {
+        "content-type": upstream.headers.get("content-type") ?? "application/json",
+      },
+    });
+
+    // forward set-cookie kalau backend ngirim sesuatu
+    const anyHeaders: any = upstream.headers as any;
+    if (typeof anyHeaders.getSetCookie === "function") {
+      const cookies = anyHeaders.getSetCookie() as string[];
+      cookies.forEach((c: string) => res.headers.append("set-cookie", c));
     } else {
-      // Jika bukan JSON, return empty object
-      data = {};
+      const sc = upstream.headers.get("set-cookie");
+      if (sc) res.headers.set("set-cookie", sc);
     }
 
-    // Forward response dari backend (termasuk status code)
-    return NextResponse.json(data, { status: response.status });
-  } catch (error) {
-    console.error("Error in /api/user/me proxy:", error);
+    return res;
+  } catch (err: any) {
     return NextResponse.json(
-      { error: "Failed to fetch user data" },
+      { error: "ME proxy failed", detail: String(err?.message ?? err) },
       { status: 500 }
     );
   }

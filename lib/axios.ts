@@ -1,13 +1,8 @@
-import axios, {
-  AxiosError,
-  AxiosInstance,
-  AxiosRequestConfig,
-  AxiosResponse,
-} from "axios";
+import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse } from "axios";
+import { API_BASE } from "./utils";
 
 // Base URL dari environment variable atau default
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://todo.firmanps.com/api";
+const BASE_URL = API_BASE;
 
 // CSRF Token storage
 let csrfToken: string | null = null;
@@ -19,12 +14,7 @@ const CSRF_TOKEN_TTL = 30 * 60 * 1000; // 30 menit (token dianggap expired setel
 const fetchCsrfToken = async (forceRefresh = false): Promise<string> => {
   // Cek apakah token masih valid (belum expired)
   const now = Date.now();
-  if (
-    !forceRefresh &&
-    csrfToken &&
-    csrfTokenTimestamp &&
-    now - csrfTokenTimestamp < CSRF_TOKEN_TTL
-  ) {
+  if (!forceRefresh && csrfToken && csrfTokenTimestamp && now - csrfTokenTimestamp < CSRF_TOKEN_TTL) {
     return csrfToken;
   }
 
@@ -125,7 +115,7 @@ axiosInstance.interceptors.response.use(
     if (isLoggingOut) {
       return Promise.reject(error);
     }
-    
+
     // Handle error berdasarkan status code
     if (error.response) {
       switch (error.response.status) {
@@ -134,35 +124,24 @@ axiosInstance.interceptors.response.use(
           // Unauthorized atau User not found (akun terhapus) - trigger logout
           // Check jika ini endpoint auth
           const requestUrl = error.config?.url || "";
-          const isAuthEndpoint =
-            requestUrl.includes("/user/me") ||
-            requestUrl.includes("/auth/");
-          
+          const isAuthEndpoint = requestUrl.includes("/user/me") || requestUrl.includes("/auth/");
+
           // CRITICAL: Skip logout logic jika sedang di halaman auth
           // Ini mencegah infinite loop karena logout akan redirect ke /auth yang trigger request lagi
           if (typeof window !== "undefined") {
             const currentPath = window.location.pathname;
             const isOnAuthPage = currentPath === "/auth" || currentPath.startsWith("/auth");
             const isOnHomePage = currentPath === "/";
-            // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'axios.ts:132',message:'401/404 error in interceptor',data:{requestUrl,isAuthEndpoint,currentPath,isOnAuthPage,isOnHomePage,isLoggingOut,willTriggerLogout:isAuthEndpoint && !isLoggingOut && !isOnAuthPage && !isOnHomePage},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
-            
+
             if (isAuthEndpoint && !isLoggingOut && !isOnAuthPage && !isOnHomePage) {
-              // #region agent log
-              fetch('http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'axios.ts:142',message:'Dispatching auth:logout event',data:{status:error.response?.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-              // #endregion
               // Set flag untuk mencegah multiple events
               isLoggingOut = true;
-              
+
               // Trigger logout via event untuk di-handle oleh AuthContext
               // AuthContext akan handle toast dan redirect, jadi kita tidak perlu duplicate
               const event = new CustomEvent("auth:logout", {
                 detail: {
-                  message:
-                    error.response?.status === 404
-                      ? "Account deleted. Please login again."
-                      : "Session expired. Please login again.",
+                  message: error.response?.status === 404 ? "Account deleted. Please login again." : "Session expired. Please login again.",
                 },
               });
               window.dispatchEvent(event);
@@ -173,7 +152,7 @@ axiosInstance.interceptors.response.use(
           // Forbidden - mungkin CSRF token invalid, coba refresh
           const errorMessage = (error.response.data as any)?.message || "";
           const errorData = (error.response.data as any) || {};
-          
+
           // Jika error terkait CSRF token atau token invalid, refresh token
           if (
             errorMessage.toLowerCase().includes("csrf") ||
@@ -225,40 +204,20 @@ export const api = {
     return axiosInstance.get<T>(url, config).then((response) => response.data);
   },
 
-  post: <T = any>(
-    url: string,
-    data?: any,
-    config?: AxiosRequestConfig
-  ): Promise<T> => {
-    return axiosInstance
-      .post<T>(url, data, config)
-      .then((response) => response.data);
+  post: <T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> => {
+    return axiosInstance.post<T>(url, data, config).then((response) => response.data);
   },
 
-  put: <T = any>(
-    url: string,
-    data?: any,
-    config?: AxiosRequestConfig
-  ): Promise<T> => {
-    return axiosInstance
-      .put<T>(url, data, config)
-      .then((response) => response.data);
+  put: <T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> => {
+    return axiosInstance.put<T>(url, data, config).then((response) => response.data);
   },
 
-  patch: <T = any>(
-    url: string,
-    data?: any,
-    config?: AxiosRequestConfig
-  ): Promise<T> => {
-    return axiosInstance
-      .patch<T>(url, data, config)
-      .then((response) => response.data);
+  patch: <T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> => {
+    return axiosInstance.patch<T>(url, data, config).then((response) => response.data);
   },
 
   delete: <T = any>(url: string, config?: AxiosRequestConfig): Promise<T> => {
-    return axiosInstance
-      .delete<T>(url, config)
-      .then((response) => response.data);
+    return axiosInstance.delete<T>(url, config).then((response) => response.data);
   },
 };
 

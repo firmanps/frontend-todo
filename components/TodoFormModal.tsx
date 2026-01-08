@@ -21,18 +21,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { getCsrfToken } from "@/lib/axios";
+import { toast } from "@/lib/toast";
 import { TodoStatus } from "@/types/todo";
 import { Plus } from "lucide-react";
 
 interface TodoFormModalProps {
-  onAdd: (title: string, description: string, status: TodoStatus) => void;
+  onSuccess?: () => void;
 }
 
-export function TodoFormModal({ onAdd }: TodoFormModalProps) {
+export function TodoFormModal({ onSuccess }: TodoFormModalProps) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<TodoStatus>("TODO");
+  const [isLoading, setIsLoading] = useState(false);
 
   const resetForm = () => {
     setTitle("");
@@ -40,15 +43,75 @@ export function TodoFormModal({ onAdd }: TodoFormModalProps) {
     setStatus("TODO");
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  // Map TodoStatus to API status format (backend expects: TODO, IN_PROGRESS, COMPLETED)
+  const mapStatusToAPI = (
+    status: TodoStatus
+  ): "TODO" | "IN_PROGRESS" | "COMPLETED" => {
+    // Backend uses uppercase, so return as-is
+    return status;
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     const trimmedTitle = title.trim();
-    if (!trimmedTitle) return;
+    if (!trimmedTitle) {
+      toast.error("Judul wajib diisi");
+      return;
+    }
 
-    onAdd(trimmedTitle, description.trim(), status);
-    resetForm();
-    setOpen(false);
+    setIsLoading(true);
+
+    try {
+      // Get CSRF token
+      const csrfToken = await getCsrfToken();
+
+      // Prepare payload
+      const payload = {
+        title: trimmedTitle,
+        description: description.trim() || "",
+        status: mapStatusToAPI(status),
+      };
+
+      // POST request to API
+      const response = await fetch("/api/todo", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrfToken && { "X-CSRF-Token": csrfToken }),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Handle 401/403 errors
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(
+            data.message || "Session expired. Please login again."
+          );
+        }
+        throw new Error(data.message || data.error || "Gagal membuat tugas");
+      }
+
+      // Success
+      toast.success("Tugas berhasil dibuat!");
+      resetForm();
+      setOpen(false);
+
+      // Call onSuccess callback to refresh todos
+      if (onSuccess) {
+        onSuccess();
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Gagal membuat tugas";
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -106,7 +169,7 @@ export function TodoFormModal({ onAdd }: TodoFormModalProps) {
               <SelectContent>
                 <SelectItem value="TODO">Todo</SelectItem>
                 <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                <SelectItem value="SUCCESS">Success</SelectItem>
+                <SelectItem value="COMPLETED">Completed</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -120,8 +183,19 @@ export function TodoFormModal({ onAdd }: TodoFormModalProps) {
             >
               Batal
             </Button>
-            <Button type="submit" disabled={!title.trim()} className="flex-1">
-              Tambah
+            <Button
+              type="submit"
+              disabled={!title.trim() || isLoading}
+              className="flex-1"
+            >
+              {isLoading ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                  Menyimpan...
+                </span>
+              ) : (
+                "Tambah"
+              )}
             </Button>
           </div>
         </form>

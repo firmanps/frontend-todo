@@ -19,58 +19,47 @@ export function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
-  // #region agent log
-  fetch("http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      location: "Sidebar.tsx:21",
-      message: "Sidebar render",
-      data: {
-        isAuthenticated,
-        hasUser: !!user,
-        hasUsername: !!user?.username,
-        hasEmail: !!user?.email,
-      },
-      timestamp: Date.now(),
-      sessionId: "debug-session",
-      runId: "run1",
-      hypothesisId: "A",
-    }),
-  }).catch(() => {});
-  // #endregion
 
   const handleLogout = async () => {
+    const safeReadBody = async (res: Response) => {
+      const contentType = res.headers.get("content-type") || "";
+      try {
+        if (contentType.includes("application/json")) return await res.json();
+        const text = await res.text();
+        return text || null;
+      } catch {
+        return null;
+      }
+    };
+
     try {
-      // Dapatkan CSRF token terlebih dahulu
       const csrfToken = await getCsrfToken();
 
-      // Hit logout endpoint
       const response = await fetch("/api/auth/logout", {
         method: "POST",
-        credentials: "include", // Include cookies
+        credentials: "include",
         headers: {
-          "Content-Type": "application/json",
-          ...(csrfToken && { "X-CSRF-Token": csrfToken }), // Sertakan CSRF token jika ada
+          ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
         },
       });
 
-      if (response.ok) {
-        // Reset CSRF token setelah logout sukses
-        resetCsrfToken();
-        // Logout sukses, redirect ke auth page
-        router.replace("/auth");
-        onClose?.();
-      } else {
-        // Jika logout gagal, reset token dan tetap redirect ke auth page
-        resetCsrfToken();
-        console.error("Logout failed:", await response.json());
-        router.replace("/auth");
-        onClose?.();
+      // Apapun hasilnya, kita reset token lokal biar state bersih
+      resetCsrfToken();
+
+      if (!response.ok) {
+        const body = await safeReadBody(response);
+        console.error("Logout failed:", {
+          status: response.status,
+          statusText: response.statusText,
+          body,
+        });
       }
+
+      // Tetep redirect (logout idempotent)
+      router.replace("/auth");
+      onClose?.();
     } catch (error) {
       console.error("Logout error:", error);
-      // Jika error, reset token dan tetap redirect ke auth page
       resetCsrfToken();
       router.replace("/auth");
       onClose?.();
@@ -165,33 +154,9 @@ export function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
                 />
               ) : (
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold">
-                  {/* #region agent log */}
-                  {(() => {
-                    const displayChar = user?.username || user?.email || "U";
-                    fetch(
-                      "http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4",
-                      {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          location: "Sidebar.tsx:148",
-                          message: "Rendering user initial",
-                          data: {
-                            displayChar,
-                            hasUser: !!user,
-                            hasUsername: !!user?.username,
-                            hasEmail: !!user?.email,
-                          },
-                          timestamp: Date.now(),
-                          sessionId: "debug-session",
-                          runId: "run1",
-                          hypothesisId: "A",
-                        }),
-                      }
-                    ).catch(() => {});
-                    return displayChar.charAt(0).toUpperCase();
-                  })()}
-                  {/* #endregion */}
+                  {(user?.username || user?.email || "U")
+                    .charAt(0)
+                    .toUpperCase()}
                 </div>
               )}
               <div className="flex-1 min-w-0">

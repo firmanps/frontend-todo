@@ -13,16 +13,32 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
+import { getTodos } from "@/lib/api";
 import { getCsrfToken } from "@/lib/axios";
 import { toast } from "@/lib/toast";
-import { Camera, KeyIcon, Mail, Save, Trash2, User } from "lucide-react";
+import {
+  Camera,
+  Eye,
+  EyeOff,
+  KeyIcon,
+  Mail,
+  Save,
+  Trash2,
+  User,
+} from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const ProfilePage = () => {
+export default function ProfilePage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading: authLoading, refetch, logout } = useAuth();
+  const {
+    user,
+    isAuthenticated,
+    isLoading: authLoading,
+    refetch,
+    logout,
+  } = useAuth();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -33,6 +49,7 @@ const ProfilePage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [todosTotal, setTodosTotal] = useState(0);
@@ -50,43 +67,53 @@ const ProfilePage = () => {
     if (user) {
       setName(user.username || "");
       setEmail(user.email || "");
-      setPassword(""); // Jangan set password dari user data
+      setPassword("");
     }
   }, [user]);
 
-  // Ambil stats todos dari localStorage
+  // ✅ Ambil stats dari API meta.totalData
   useEffect(() => {
-    const todos = JSON.parse(localStorage.getItem("todos") || "[]") as Array<{
-      completed?: boolean;
-    }>;
-    setTodosTotal(todos.length);
-    setTodosDone(todos.filter((t) => t.completed).length);
-  }, []);
+    if (!isAuthenticated || authLoading) return;
+
+    const loadTodoStats = async () => {
+      try {
+        const base = { page: 1, limit: 1, sort: "desc" as const };
+
+        const [allRes, doneRes] = await Promise.all([
+          // status undefined -> backend status null -> semua
+          getTodos(base),
+          getTodos({ ...base, status: "COMPLETED" }),
+        ]);
+
+        setTodosTotal(allRes?.meta?.totalData ?? 0);
+        setTodosDone(doneRes?.meta?.totalData ?? 0);
+      } catch (err) {
+        console.error("Failed to load todo stats:", err);
+        // optional: silent supaya gak spam
+      }
+    };
+
+    loadTodoStats();
+  }, [isAuthenticated, authLoading]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validate file type
       if (!file.type.startsWith("image/")) {
         toast.error("File harus berupa gambar");
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
+        if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
 
-      // Validate file size (max 5MB)
+      // max 2MB
       if (file.size > 2 * 1024 * 1024) {
         toast.error("Ukuran gambar maksimal 2MB");
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
+        if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
 
       setSelectedImage(file);
 
-      // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
@@ -105,13 +132,9 @@ const ProfilePage = () => {
     setIsLoading(true);
 
     try {
-      // Dapatkan CSRF token terlebih dahulu
       const csrfToken = await getCsrfToken();
-
-      // Buat FormData untuk multipart/form-data
       const formData = new FormData();
 
-      // Tambahkan fields yang berubah
       if (name !== user.username && name.trim() !== "") {
         formData.append("username", name.trim());
       }
@@ -121,7 +144,6 @@ const ProfilePage = () => {
       }
 
       if (password.trim() !== "") {
-        // Validasi password minimal 6 karakter
         if (password.length < 6) {
           toast.error("Password minimal 6 karakter");
           setIsLoading(false);
@@ -130,48 +152,52 @@ const ProfilePage = () => {
         formData.append("password", password);
       }
 
-      // Tambahkan image jika ada
       if (selectedImage) {
         formData.append("image", selectedImage);
-        console.log(
-          "Uploading image:",
-          selectedImage.name,
-          selectedImage.size,
-          "bytes"
-        );
       }
 
-      // Hit update profile endpoint
       const response = await fetch("/api/user/updateprofile", {
         method: "PATCH",
-        credentials: "include", // Include cookies (access_token httpOnly)
+        credentials: "include",
         headers: {
-          ...(csrfToken && { "X-CSRF-Token": csrfToken }), // Sertakan CSRF token jika ada
-          // Jangan set Content-Type, biarkan browser set otomatis dengan boundary untuk multipart/form-data
+          ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
         },
         body: formData,
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data: any = null;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = { message: text };
+      }
 
       if (!response.ok) {
         throw new Error(
-          data.message || data.error || "Gagal memperbarui profil"
+          data?.message || data?.error || "Gagal memperbarui profil"
         );
       }
 
-      toast.success(data.message || "Profil berhasil diperbarui!");
+      toast.success(data?.message || "Profil berhasil diperbarui!");
 
-      // Reset form
       setPassword("");
       setSelectedImage(null);
       setImagePreview(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
 
-      // Refresh auth data untuk mendapatkan data terbaru (termasuk image baru)
       await refetch();
+
+      // refresh stats setelah update (optional)
+      try {
+        const base = { page: 1, limit: 1, sort: "desc" as const };
+        const [allRes, doneRes] = await Promise.all([
+          getTodos(base),
+          getTodos({ ...base, status: "COMPLETED" }),
+        ]);
+        setTodosTotal(allRes?.meta?.totalData ?? 0);
+        setTodosDone(doneRes?.meta?.totalData ?? 0);
+      } catch {}
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Gagal memperbarui profil";
@@ -185,36 +211,35 @@ const ProfilePage = () => {
     setIsDeleting(true);
 
     try {
-      // Dapatkan CSRF token terlebih dahulu
       const csrfToken = await getCsrfToken();
 
-      // Hit delete account endpoint
       const response = await fetch("/api/user/deleteme", {
         method: "DELETE",
-        credentials: "include", // Include cookies (access_token httpOnly)
+        credentials: "include",
         headers: {
-          "Content-Type": "application/json",
-          ...(csrfToken && { "X-CSRF-Token": csrfToken }), // Sertakan CSRF token jika ada
+          "content-type": "application/json",
+          ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
         },
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || data.error || "Gagal menghapus akun");
+      const text = await response.text();
+      let data: any = null;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = { message: text };
       }
 
-      // Success: show toast
-      toast.success(data.message || "Akun berhasil dihapus", {
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || "Gagal menghapus akun");
+      }
+
+      toast.success(data?.message || "Akun berhasil dihapus", {
         description: "Anda akan diarahkan ke halaman login",
       });
 
-      // Close dialog
       setDeleteDialogOpen(false);
 
-      // Backend sudah menghapus cookie access_token via Set-Cookie header
-      // API route sudah forward Set-Cookie untuk clear cookie di browser
-      // Trigger logout untuk clear state dan redirect
       setTimeout(() => {
         logout("Account deleted successfully. Please login again.");
       }, 500);
@@ -242,7 +267,6 @@ const ProfilePage = () => {
     return getInitials(user.username || user.email || "U");
   }, [user]);
 
-  // Cek apakah ada perubahan pada form
   const hasChanges = useMemo(() => {
     if (!user) return false;
     return (
@@ -265,7 +289,7 @@ const ProfilePage = () => {
   }
 
   if (!isAuthenticated || !user) {
-    return null; // Will redirect via useEffect
+    return null;
   }
 
   return (
@@ -331,6 +355,7 @@ const ProfilePage = () => {
                       {initials}
                     </div>
                   )}
+
                   <button
                     type="button"
                     className="absolute -bottom-1 -right-1 w-8 h-8 rounded-lg bg-card shadow-soft border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
@@ -387,27 +412,43 @@ const ProfilePage = () => {
                     />
                   </div>
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="password" className="text-sm font-medium">
                     Password
                   </Label>
                   <div className="relative">
-                    <KeyIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <KeyIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground z-10" />
                     <Input
                       id="password"
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="********"
-                      className="pl-10"
+                      className="pl-10 pr-10"
                       minLength={6}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label={
+                        showPassword
+                          ? "Sembunyikan password"
+                          : "Tampilkan password"
+                      }
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-5 h-5" />
+                      ) : (
+                        <Eye className="w-5 h-5" />
+                      )}
+                    </button>
                   </div>
                 </div>
 
                 <div className="pt-4 border-t border-border">
                   <div className="flex flex-col gap-3">
-                    {/* Info jika ada gambar yang akan di-upload */}
                     {selectedImage && (
                       <div className="text-sm text-muted-foreground bg-secondary/50 rounded-lg p-3">
                         <p className="font-medium text-foreground mb-1">
@@ -419,6 +460,7 @@ const ProfilePage = () => {
                         </p>
                       </div>
                     )}
+
                     <Button
                       type="submit"
                       disabled={isLoading || !hasChanges}
@@ -470,30 +512,24 @@ const ProfilePage = () => {
             </div>
           </div>
 
-          {/* Danger Zone - Delete Account */}
+          {/* Danger Zone */}
           <div className="mt-6 bg-card rounded-xl p-6 shadow-soft border border-red-200 dark:border-red-800/50">
-            <div>
-              <div className=" border-border">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div className="flex-1">
-                    <h4 className="font-medium text-foreground mb-1">
-                      Hapus Akun
-                    </h4>
-                    <p className="text-sm text-muted-foreground">
-                      Setelah menghapus akun, semua data Anda akan dihapus
-                      secara permanen dan tidak dapat dikembalikan.
-                    </p>
-                  </div>
-                  <Button
-                    variant="destructive"
-                    onClick={() => setDeleteDialogOpen(true)}
-                    className="sm:shrink-0"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Hapus Akun
-                  </Button>
-                </div>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex-1">
+                <h4 className="font-medium text-foreground mb-1">Hapus Akun</h4>
+                <p className="text-sm text-muted-foreground">
+                  Setelah menghapus akun, semua data Anda akan dihapus secara
+                  permanen dan tidak dapat dikembalikan.
+                </p>
               </div>
+              <Button
+                variant="destructive"
+                onClick={() => setDeleteDialogOpen(true)}
+                className="sm:shrink-0"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Hapus Akun
+              </Button>
             </div>
           </div>
         </div>
@@ -508,7 +544,7 @@ const ProfilePage = () => {
             </DialogTitle>
             <DialogDescription className="pt-2">
               Tindakan ini tidak dapat dibatalkan. Semua data Anda akan dihapus
-              secara permanen, termasuk:
+              secara permanen.
             </DialogDescription>
             <div className="mt-2 space-y-1 text-sm text-muted-foreground">
               <ul className="list-disc list-inside space-y-1">
@@ -521,7 +557,7 @@ const ProfilePage = () => {
               </p>
             </div>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-2 sm:gap-3">
             <Button
               variant="outline"
               onClick={() => setDeleteDialogOpen(false)}
@@ -552,5 +588,3 @@ const ProfilePage = () => {
     </div>
   );
 };
-
-export default ProfilePage;

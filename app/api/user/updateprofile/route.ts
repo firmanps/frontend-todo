@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://todo.firmanps.com/api";
+const BACKEND_URL = process.env.BACKEND_URL ?? "https://todo.firmanps.com";
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -15,7 +14,7 @@ export async function PATCH(request: NextRequest) {
     const formData = await request.formData();
 
     // Forward form data ke backend
-    const response = await fetch(`${BACKEND_URL}/v1/user/updateprofile`, {
+    const response = await fetch(`${BACKEND_URL}/api/v1/user/updateprofile`, {
       method: "PATCH",
       headers: {
         ...(cookies && { Cookie: cookies }), // Forward cookies (access_token httpOnly ikut kebawa)
@@ -38,4 +37,3 @@ export async function PATCH(request: NextRequest) {
     );
   }
 }
-

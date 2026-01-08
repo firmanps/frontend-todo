@@ -104,7 +104,7 @@ export function EditTodoModal({
               <SelectContent>
                 <SelectItem value="TODO">Todo</SelectItem>
                 <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                <SelectItem value="SUCCESS">Success</SelectItem>
+                <SelectItem value="COMPLETED">Completed</SelectItem>
               </SelectContent>
             </Select>
           </div>

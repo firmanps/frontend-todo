@@ -37,7 +37,7 @@ export async function getMe(): Promise<AuthResponse> {
     // Handle response dengan safe JSON parsing
     const contentType = response.headers.get("content-type");
     let data: any = {};
-    
+
     if (contentType && contentType.includes("application/json")) {
       try {
         const text = await response.text();

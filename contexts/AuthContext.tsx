@@ -35,24 +35,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Helper untuk cek apakah sedang di public route (tidak perlu auth check)
   const isPublicRoute = (path: string) => {
-    // #region agent log
-    fetch("http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        location: "AuthContext.tsx:37",
-        message: "isPublicRoute called",
-        data: {
-          path,
-          result: path === "/" || path === "/auth" || path.startsWith("/auth"),
-        },
-        timestamp: Date.now(),
-        sessionId: "debug-session",
-        runId: "run1",
-        hypothesisId: "B",
-      }),
-    }).catch(() => {});
-    // #endregion
     return path === "/" || path === "/auth" || path.startsWith("/auth");
   };
 
@@ -61,47 +43,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Ini mencegah infinite loop dan toast spam di public routes
     const currentPath =
       typeof window !== "undefined" ? window.location.pathname : pathname || "";
-    // #region agent log
-    fetch("http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        location: "AuthContext.tsx:41",
-        message: "checkAuth entry",
-        data: {
-          currentPath,
-          pathname,
-          windowPath:
-            typeof window !== "undefined" ? window.location.pathname : "N/A",
-          isPublic: isPublicRoute(currentPath),
-        },
-        timestamp: Date.now(),
-        sessionId: "debug-session",
-        runId: "run1",
-        hypothesisId: "A",
-      }),
-    }).catch(() => {});
-    // #endregion
 
     if (isPublicRoute(currentPath)) {
-      // #region agent log
-      fetch(
-        "http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            location: "AuthContext.tsx:47",
-            message: "checkAuth skipped - public route",
-            data: { currentPath },
-            timestamp: Date.now(),
-            sessionId: "debug-session",
-            runId: "run1",
-            hypothesisId: "A",
-          }),
-        }
-      ).catch(() => {});
-      // #endregion
       setUser(null);
       setIsAuthenticated(false);
       setIsLoading(false);
@@ -166,59 +109,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Handle semua error status code yang mengindikasikan session invalid
       // Hanya trigger logout jika di private route
       const errorStatus = error?.status;
-      // #region agent log
-      fetch(
-        "http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            location: "AuthContext.tsx:111",
-            message: "checkAuth error caught",
-            data: {
-              errorStatus,
-              currentPathAfter:
-                typeof window !== "undefined"
-                  ? window.location.pathname
-                  : pathname || "",
-              isPublic: isPublicRoute(
-                typeof window !== "undefined"
-                  ? window.location.pathname
-                  : pathname || ""
-              ),
-            },
-            timestamp: Date.now(),
-            sessionId: "debug-session",
-            runId: "run1",
-            hypothesisId: "D",
-          }),
-        }
-      ).catch(() => {});
-      // #endregion
       if (
         errorStatus === 401 ||
         errorStatus === 403 ||
         errorStatus === 404 ||
         errorStatus >= 500
       ) {
-        // #region agent log
-        fetch(
-          "http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              location: "AuthContext.tsx:117",
-              message: "Calling logout from checkAuth error",
-              data: { errorStatus },
-              timestamp: Date.now(),
-              sessionId: "debug-session",
-              runId: "run1",
-              hypothesisId: "D",
-            }),
-          }
-        ).catch(() => {});
-        // #endregion
         // 401/403 = Unauthorized/Forbidden (session invalid)
         // 404 = User not found (akun terhapus)
         // 500+ = Server error (kemungkinan session invalid atau server issue)
@@ -244,51 +140,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(
     (message?: string) => {
-      // #region agent log
-      fetch(
-        "http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            location: "AuthContext.tsx:141",
-            message: "logout called",
-            data: {
-              message,
-              currentPath:
-                typeof window !== "undefined"
-                  ? window.location.pathname
-                  : pathname || "",
-              isLoggingOut: isLoggingOutRef.current,
-            },
-            timestamp: Date.now(),
-            sessionId: "debug-session",
-            runId: "run1",
-            hypothesisId: "D",
-          }),
-        }
-      ).catch(() => {});
-      // #endregion
       // Guard: prevent multiple logout calls
       if (isLoggingOutRef.current) {
-        // #region agent log
-        fetch(
-          "http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              location: "AuthContext.tsx:144",
-              message: "logout skipped - already logging out",
-              data: {},
-              timestamp: Date.now(),
-              sessionId: "debug-session",
-              runId: "run1",
-              hypothesisId: "D",
-            }),
-          }
-        ).catch(() => {});
-        // #endregion
         return;
       }
 
@@ -296,24 +149,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isLoggingOutRef.current = true;
 
       // Clear user state
-      // #region agent log
-      fetch(
-        "http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            location: "AuthContext.tsx:152",
-            message: "Clearing user state",
-            data: {},
-            timestamp: Date.now(),
-            sessionId: "debug-session",
-            runId: "run1",
-            hypothesisId: "E",
-          }),
-        }
-      ).catch(() => {});
-      // #endregion
       setUser(null);
       setIsAuthenticated(false);
 
@@ -349,70 +184,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Check auth saat component mount dan saat pathname berubah
   useEffect(() => {
-    // #region agent log
-    fetch("http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        location: "AuthContext.tsx:186",
-        message: "useEffect pathname changed",
-        data: {
-          pathname,
-          pathnameType: typeof pathname,
-          windowPath:
-            typeof window !== "undefined" ? window.location.pathname : "N/A",
-          isPublic: isPublicRoute(pathname || ""),
-        },
-        timestamp: Date.now(),
-        sessionId: "debug-session",
-        runId: "run1",
-        hypothesisId: "A",
-      }),
-    }).catch(() => {});
-    // #endregion
     // Skip checkAuth jika sedang di public route
     if (isPublicRoute(pathname || "")) {
-      // #region agent log
-      fetch(
-        "http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            location: "AuthContext.tsx:189",
-            message: "Skipping checkAuth - public route",
-            data: { pathname },
-            timestamp: Date.now(),
-            sessionId: "debug-session",
-            runId: "run1",
-            hypothesisId: "A",
-          }),
-        }
-      ).catch(() => {});
-      // #endregion
       // Jika di public route, set state sebagai not authenticated tanpa check
       setUser(null);
       setIsAuthenticated(false);
       setIsLoading(false);
     } else {
-      // #region agent log
-      fetch(
-        "http://127.0.0.1:7243/ingest/2c4de73c-ab75-46bb-b94e-bb03387424f4",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            location: "AuthContext.tsx:195",
-            message: "Calling checkAuth - private route",
-            data: { pathname },
-            timestamp: Date.now(),
-            sessionId: "debug-session",
-            runId: "run1",
-            hypothesisId: "A",
-          }),
-        }
-      ).catch(() => {});
-      // #endregion
       // Hanya check auth jika di private route
       checkAuth();
     }

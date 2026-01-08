@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://todo.firmanps.com/api";
+const BACKEND_URL = process.env.BACKEND_URL ?? "https://todo.firmanps.com";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +12,7 @@ export async function POST(request: NextRequest) {
     // Ambil CSRF token dari header request
     const csrfToken = request.headers.get("X-CSRF-Token");
 
-    const response = await fetch(`${BACKEND_URL}/v1/auth/register`, {
+    const response = await fetch(`${BACKEND_URL}/api/v1/auth/register`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -32,7 +31,7 @@ export async function POST(request: NextRequest) {
     // Forward cookies dari backend response ke client
     // Parse dan set cookies menggunakan NextResponse.cookies API untuk memastikan flags di-preserve
     const nextResponse = NextResponse.json(data, { status: response.status });
-    
+
     const setCookieHeaders = response.headers.getSetCookie();
     if (setCookieHeaders && setCookieHeaders.length > 0) {
       setCookieHeaders.forEach((cookieString) => {
@@ -41,17 +40,23 @@ export async function POST(request: NextRequest) {
           const [nameValue] = parts;
           const [name, ...valueParts] = nameValue.split("=");
           const value = valueParts.join("=");
-          
+
           if (name && value !== undefined) {
             const options: any = {};
-            
+
             for (let i = 1; i < parts.length; i++) {
               const part = parts[i].trim();
               const equalIndex = part.indexOf("=");
-              const key = equalIndex > 0 ? part.substring(0, equalIndex).trim() : part.trim();
-              const val = equalIndex > 0 ? part.substring(equalIndex + 1).trim() : undefined;
+              const key =
+                equalIndex > 0
+                  ? part.substring(0, equalIndex).trim()
+                  : part.trim();
+              const val =
+                equalIndex > 0
+                  ? part.substring(equalIndex + 1).trim()
+                  : undefined;
               const lowerKey = key.toLowerCase();
-              
+
               if (lowerKey === "path") {
                 options.path = val || "/";
               } else if (lowerKey === "domain") {
@@ -68,15 +73,23 @@ export async function POST(request: NextRequest) {
                 options.secure = true;
               } else if (lowerKey === "samesite") {
                 const sameSiteValue = val?.toLowerCase() || "lax";
-                options.sameSite = sameSiteValue === "strict" ? "strict" : sameSiteValue === "none" ? "none" : "lax";
+                options.sameSite =
+                  sameSiteValue === "strict"
+                    ? "strict"
+                    : sameSiteValue === "none"
+                    ? "none"
+                    : "lax";
               }
             }
-            
+
             // Ensure httpOnly for access_token
-            if (name.toLowerCase().includes("access_token") || name.toLowerCase().includes("access-token")) {
+            if (
+              name.toLowerCase().includes("access_token") ||
+              name.toLowerCase().includes("access-token")
+            ) {
               options.httpOnly = true;
             }
-            
+
             nextResponse.cookies.set(name, value, options);
           }
         } catch (error) {
@@ -94,4 +107,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

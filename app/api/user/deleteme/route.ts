@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://todo.firmanps.com/api";
+const BACKEND_URL = process.env.BACKEND_URL ?? "https://todo.firmanps.com";
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -11,7 +10,7 @@ export async function DELETE(request: NextRequest) {
     // Ambil CSRF token dari header request
     const csrfToken = request.headers.get("X-CSRF-Token");
 
-    const response = await fetch(`${BACKEND_URL}/v1/user/deleteme`, {
+    const response = await fetch(`${BACKEND_URL}/api/v1/user/deleteme`, {
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",
@@ -37,21 +36,21 @@ export async function DELETE(request: NextRequest) {
           const [nameValue] = parts;
           const equalIndex = nameValue.indexOf("=");
           const name = equalIndex > 0 ? nameValue.substring(0, equalIndex) : nameValue;
-          
+
           if (name) {
             // Parse attributes
             const options: any = {
               expires: new Date(0), // Set expires di masa lalu untuk clear cookie
               path: "/",
             };
-            
+
             for (let i = 1; i < parts.length; i++) {
               const part = parts[i];
               const equalIdx = part.indexOf("=");
               const key = equalIdx > 0 ? part.substring(0, equalIdx) : part;
               const val = equalIdx > 0 ? part.substring(equalIdx + 1) : undefined;
               const lowerKey = key.toLowerCase();
-              
+
               if (lowerKey === "path") {
                 options.path = val || "/";
               } else if (lowerKey === "domain") {
@@ -65,7 +64,7 @@ export async function DELETE(request: NextRequest) {
                 options.sameSite = sameSiteValue === "strict" ? "strict" : sameSiteValue === "none" ? "none" : "lax";
               }
             }
-            
+
             // Clear cookie di browser dengan set value ke empty string dan expires di masa lalu
             nextResponse.cookies.set(name, "", options);
             console.log(`Cookie cleared: ${name}`);
@@ -79,10 +78,6 @@ export async function DELETE(request: NextRequest) {
     return nextResponse;
   } catch (error) {
     console.error("Error in /api/user/deleteme proxy:", error);
-    return NextResponse.json(
-      { error: "Failed to delete account" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
   }
 }
-

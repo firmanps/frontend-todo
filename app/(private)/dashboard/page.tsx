@@ -1,19 +1,21 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { EditTodoModal } from "@/components/EditTodoModal";
 import { SearchFilter } from "@/components/SearchFilter";
 import { Sidebar, SidebarTrigger } from "@/components/Sidebar";
 import { TodoFormModal } from "@/components/TodoFormModal";
 import { TodoItem } from "@/components/TodoItem";
 import { TodoPagination } from "@/components/TodoPagination";
 import { useAuth } from "@/contexts/AuthContext";
-import { Todo, TodoStatus } from "@/types/todo";
+import { getTodos } from "@/lib/api";
+import { toast } from "@/lib/toast";
+import { Todo, TodoStatus, TodosMeta } from "@/types/todo";
 import { CheckCircle2, Clock, ListTodo, Trophy } from "lucide-react";
 
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 8;
+const SEARCH_DEBOUNCE_MS = 400;
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -21,190 +23,275 @@ export default function DashboardPage() {
 
   const [todos, setTodos] = useState<Todo[]>([]);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [statusFilter, setStatusFilter] = useState<TodoStatus | "ALL">("ALL");
   const [currentPage, setCurrentPage] = useState(1);
+  const [meta, setMeta] = useState<TodosMeta | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
-  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [isLoadingTodos, setIsLoadingTodos] = useState(false);
 
-  // Proteksi route: redirect ke /auth jika belum login
+  // ✅ stats dari DB
+  const [stats, setStats] = useState({
+    total: 0, // totalData dari query yang sedang tampil (include search+status)
+    inProgress: 0,
+    success: 0,
+  });
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+
+  const fetchingTodosRef = useRef(false);
+  const fetchingStatsRef = useRef(false);
+
+  const mapStatusFromAPI = (status: string): TodoStatus => {
+    if (status === "TODO" || status === "IN_PROGRESS" || status === "COMPLETED")
+      return status as TodoStatus;
+    return "TODO";
+  };
+
+  const getApiSort = () =>
+    sortOrder === "newest" ? ("desc" as const) : ("asc" as const);
+
+  // ✅ Debounce search (server-side)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // ✅ Reset page ke 1 kalau filter/search/sort berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, statusFilter, sortOrder]);
+
+  // ✅ Fetch todos (server-side search + filter + pagination)
+  const fetchTodos = async () => {
+    if (!isAuthenticated) return;
+    if (fetchingTodosRef.current) return;
+
+    fetchingTodosRef.current = true;
+    setIsLoadingTodos(true);
+
+    try {
+      const apiSort = getApiSort();
+
+      const res = await getTodos({
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
+        sort: apiSort,
+        status: statusFilter === "ALL" ? undefined : statusFilter,
+        search: debouncedSearch || undefined, // ✅ all data search
+      });
+
+      const list = Array.isArray(res?.data) ? res.data : [];
+      const transformed: Todo[] = list.map((item: any) => ({
+        id: item.id || item._id || crypto.randomUUID(),
+        title: item.title || "",
+        description: item.description || "",
+        status: mapStatusFromAPI(item.status || "TODO"),
+        completed: item.status === "COMPLETED" || item.completed || false,
+        createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
+      }));
+
+      setTodos(transformed);
+      setMeta(res?.meta ?? null);
+
+      // ✅ total card = totalData dari hasil query yg lagi ditampilkan (include search+status)
+      setStats((prev) => ({
+        ...prev,
+        total: res?.meta?.totalData ?? 0,
+      }));
+    } catch (error) {
+      console.error("Error fetching todos:", error);
+      if (
+        error instanceof Error &&
+        !error.message.includes("Session expired")
+      ) {
+        toast.error("Gagal memuat tugas");
+      }
+    } finally {
+      setIsLoadingTodos(false);
+      fetchingTodosRef.current = false;
+    }
+  };
+
+  // ✅ Fetch stats dari DB (ikut search biar konsisten)
+  const fetchStats = async () => {
+    if (!isAuthenticated) return;
+    if (fetchingStatsRef.current) return;
+
+    fetchingStatsRef.current = true;
+    setIsLoadingStats(true);
+
+    try {
+      const apiSort = getApiSort();
+      const base = {
+        page: 1,
+        limit: 1,
+        sort: apiSort as "asc" | "desc",
+        search: debouncedSearch || undefined, // ✅ ikut search
+      };
+
+      // inProgress & success = count berdasarkan status
+      const [inProgRes, doneRes] = await Promise.all([
+        getTodos({ ...base, status: "IN_PROGRESS" }),
+        getTodos({ ...base, status: "COMPLETED" }),
+      ]);
+
+      setStats((prev) => ({
+        total: prev.total, // total sudah dari fetchTodos()
+        inProgress: inProgRes?.meta?.totalData ?? 0,
+        success: doneRes?.meta?.totalData ?? 0,
+      }));
+    } catch (err) {
+      console.error("Error fetching stats:", err);
+    } finally {
+      setIsLoadingStats(false);
+      fetchingStatsRef.current = false;
+    }
+  };
+
+  // Proteksi route
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.replace("/auth");
-      return;
-    }
-
-    // Load todos dari localStorage
-    const savedTodos = localStorage.getItem("todos");
-    if (savedTodos) {
-      const parsed = JSON.parse(savedTodos).map((t: Todo) => ({
-        ...t,
-        createdAt: new Date(t.createdAt),
-        status: t.status || "TODO",
-      }));
-      setTodos(parsed);
     }
   }, [isAuthenticated, isLoading, router]);
 
+  // Fetch list: page / filter / sort / debouncedSearch berubah
   useEffect(() => {
-    localStorage.setItem("todos", JSON.stringify(todos));
-  }, [todos]);
+    if (isAuthenticated && !isLoading) {
+      fetchTodos();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    currentPage,
+    statusFilter,
+    sortOrder,
+    debouncedSearch,
+    isAuthenticated,
+    isLoading,
+  ]);
 
-  const addTodo = (title: string, description: string, status: TodoStatus) => {
-    const newTodo: Todo = {
-      id: crypto.randomUUID(),
-      title,
-      description,
-      status,
-      completed: status === "SUCCESS",
-      createdAt: new Date(),
+  // Fetch stats: filter / sort / debouncedSearch berubah
+  useEffect(() => {
+    if (isAuthenticated && !isLoading) {
+      fetchStats();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, sortOrder, debouncedSearch, isAuthenticated, isLoading]);
+
+  // Refetch saat tab balik visible
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && isAuthenticated) {
+        fetchTodos();
+        fetchStats();
+      }
     };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
 
-    setTodos((prev) => [newTodo, ...prev]);
-    setCurrentPage(1);
+  const refreshTodos = async () => {
+    // kalau bukan page 1, set ke 1 biar konsisten
+    if (currentPage !== 1) setCurrentPage(1);
+    else {
+      await fetchTodos();
+      await fetchStats();
+    }
   };
 
   const deleteTodo = (id: string) => {
+    // optimistic remove
     setTodos((prev) => prev.filter((t) => t.id !== id));
+    // refresh biar akurat
+    fetchTodos();
+    fetchStats();
   };
 
-  const editTodo = (
-    id: string,
-    title: string,
-    description: string,
-    status: TodoStatus
-  ) => {
-    setTodos((prev) =>
-      prev.map((t) =>
-        t.id === id
-          ? {
-              ...t,
-              title,
-              description,
-              status,
-              completed: status === "SUCCESS",
-            }
-          : t
-      )
-    );
-  };
-
-  const handleEditClick = (todo: Todo) => {
-    setEditingTodo(todo);
-    setEditModalOpen(true);
-  };
-
-  const filteredTodos = useMemo(() => {
-    let result = [...todos];
-
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        (t) =>
-          t.title.toLowerCase().includes(q) ||
-          (t.description?.toLowerCase() ?? "").includes(q)
-      );
-    }
-
-    if (statusFilter !== "ALL") {
-      result = result.filter((t) => t.status === statusFilter);
-    }
-
-    result.sort((a, b) => {
-      const dateA = new Date(a.createdAt).getTime();
-      const dateB = new Date(b.createdAt).getTime();
-      return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
-    });
-
-    return result;
-  }, [todos, search, sortOrder, statusFilter]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search, statusFilter, sortOrder]);
-
-  const totalPages = Math.ceil(filteredTodos.length / ITEMS_PER_PAGE);
-  const paginatedTodos = filteredTodos.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
-
-  const stats = useMemo(() => {
-    const total = todos.length;
-    const inProgress = todos.filter((t) => t.status === "IN_PROGRESS").length;
-    const success = todos.filter((t) => t.status === "SUCCESS").length;
-    return { total, inProgress, success };
-  }, [todos]);
+  const totalPages = meta?.totalPage ?? 0;
 
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(false)} />
 
-      <main className="flex-1 overflow-auto p-6 lg:p-8">
+      <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
         <div className="mx-auto max-w-4xl animate-fade-in">
           {/* Header */}
-          <div className="mb-8 flex items-start gap-3">
-            <SidebarTrigger onClick={() => setSidebarOpen(true)} />
-            <div className="flex-1">
-              <h1 className="mb-2 text-3xl font-bold text-foreground">
-                Dashboard
-              </h1>
-              <p className="text-muted-foreground">
-                Kelola tugas harian Anda dengan mudah
-              </p>
+          <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:justify-between items-start sm:items-center gap-3 sm:gap-4">
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <SidebarTrigger onClick={() => setSidebarOpen(true)} />
+              <div className="flex-1 sm:flex-initial">
+                <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
+                  Dashboard
+                </h1>
+                <p className="text-sm sm:text-base text-muted-foreground mt-1">
+                  Kelola tugas harian Anda dengan mudah
+                </p>
+              </div>
             </div>
-            <TodoFormModal onAdd={addTodo} />
+            <div className="w-full sm:w-auto sm:ml-auto">
+              <TodoFormModal onSuccess={refreshTodos} />
+            </div>
           </div>
 
           {/* Stats */}
-          <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded-xl border border-border/50 bg-card p-5 shadow-soft">
+          <div className="mb-6 sm:mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            <div className="rounded-xl border border-border/50 bg-card p-4 sm:p-5 shadow-soft">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                  <ListTodo className="h-5 w-5 text-primary" />
+                <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                  <ListTodo className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
                 </div>
-                <div>
-                  <p className="text-2xl font-bold text-foreground">
-                    {stats.total}
+                <div className="min-w-0">
+                  <p className="text-xl sm:text-2xl font-bold text-foreground">
+                    {isLoadingTodos ? "…" : stats.total}
                   </p>
-                  <p className="text-sm text-muted-foreground">Total Tugas</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate">
+                    Total Tugas
+                  </p>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-xl border border-border/50 bg-card p-5 shadow-soft">
+            <div className="rounded-xl border border-border/50 bg-card p-4 sm:p-5 shadow-soft">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10">
-                  <Clock className="h-5 w-5 text-accent" />
+                <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-lg bg-[#EBF6F6]">
+                  <Clock className="h-5 w-5 sm:h-6 sm:w-6 text-[#3FA6A6]" />
                 </div>
-                <div>
-                  <p className="text-2xl font-bold text-foreground">
-                    {stats.inProgress}
+                <div className="min-w-0">
+                  <p className="text-xl sm:text-2xl font-bold text-foreground">
+                    {isLoadingStats ? "…" : stats.inProgress}
                   </p>
-                  <p className="text-sm text-muted-foreground">In Progress</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate">
+                    In Progress
+                  </p>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-xl border border-border/50 bg-card p-5 shadow-soft">
+            <div className="rounded-xl border border-border/50 bg-card p-4 sm:p-5 shadow-soft sm:col-span-2 lg:col-span-1">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-                  <Trophy className="h-5 w-5 text-success" />
+                <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-lg bg-[#DCFCE7]">
+                  <Trophy className="h-5 w-5 sm:h-6 sm:w-6 text-[#16A34A]" />
                 </div>
-                <div>
-                  <p className="text-2xl font-bold text-foreground">
-                    {stats.success}
+                <div className="min-w-0">
+                  <p className="text-xl sm:text-2xl font-bold text-foreground">
+                    {isLoadingStats ? "…" : stats.success}
                   </p>
-                  <p className="text-sm text-muted-foreground">Selesai</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate">
+                    Selesai
+                  </p>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Search & Filter */}
-          <div className="mb-6">
+          <div className="mb-4 sm:mb-6">
             <SearchFilter
               search={search}
               onSearchChange={setSearch}
@@ -216,52 +303,47 @@ export default function DashboardPage() {
           </div>
 
           {/* Todo List */}
-          <div className="space-y-3">
-            {paginatedTodos.length === 0 ? (
-              <div className="rounded-xl border border-border/50 bg-card py-16 text-center">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                  <CheckCircle2 className="h-8 w-8 text-muted-foreground" />
+          <div className="space-y-2 sm:space-y-3">
+            {isLoadingTodos ? (
+              <div className="rounded-xl border border-border/50 bg-card py-12 sm:py-16 px-4 text-center">
+                <div className="mx-auto mb-4 flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-muted">
+                  <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                 </div>
-                <h3 className="mb-1 text-lg font-semibold text-foreground">
-                  {search || statusFilter !== "ALL"
+                <p className="text-sm sm:text-base text-muted-foreground">
+                  Memuat tugas...
+                </p>
+              </div>
+            ) : todos.length === 0 ? (
+              <div className="rounded-xl border border-border/50 bg-card py-12 sm:py-16 px-4 text-center">
+                <div className="mx-auto mb-4 flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-full bg-muted">
+                  <CheckCircle2 className="h-6 w-6 sm:h-8 sm:w-8 text-muted-foreground" />
+                </div>
+                <h3 className="mb-1 text-base sm:text-lg font-semibold text-foreground">
+                  {debouncedSearch || statusFilter !== "ALL"
                     ? "Tidak ditemukan"
                     : "Belum ada tugas"}
                 </h3>
-                <p className="text-muted-foreground">
-                  {search || statusFilter !== "ALL"
-                    ? "Coba filter lain"
+                <p className="text-sm sm:text-base text-muted-foreground">
+                  {debouncedSearch || statusFilter !== "ALL"
+                    ? "Coba keyword/filter lain"
                     : "Tambahkan tugas pertama Anda!"}
                 </p>
               </div>
             ) : (
-              paginatedTodos.map((todo) => (
-                <TodoItem
-                  key={todo.id}
-                  todo={todo}
-                  onDelete={deleteTodo}
-                  onEdit={handleEditClick}
-                />
+              todos.map((todo) => (
+                <TodoItem key={todo.id} todo={todo} onDelete={deleteTodo} />
               ))
             )}
           </div>
 
           {/* Pagination */}
-          <TodoPagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={setCurrentPage}
-          />
-
-          {/* Edit Modal */}
-          <EditTodoModal
-            todo={editingTodo}
-            open={editModalOpen}
-            onOpenChange={(open) => {
-              setEditModalOpen(open);
-              if (!open) setEditingTodo(null);
-            }}
-            onSave={editTodo}
-          />
+          {!isLoadingTodos && totalPages > 0 && (
+            <TodoPagination
+              currentPage={meta?.page ?? currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          )}
         </div>
       </main>
     </div>

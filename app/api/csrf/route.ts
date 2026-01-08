@@ -1,44 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://todo.firmanps.com/api";
-
 export async function GET(request: NextRequest) {
-  try {
-    // Ambil cookies dari request client
-    const cookies = request.cookies.toString();
+  const BACKEND_URL = process.env.BACKEND_URL ?? "https://todo.firmanps.com";
 
-    const response = await fetch(`${BACKEND_URL}/v1/csrf`, {
+  try {
+    // Ambil cookie header mentah (format valid: "a=b; c=d")
+    const cookieHeader = request.headers.get("cookie") ?? "";
+
+    const upstream = await fetch(`${BACKEND_URL}/api/v1/csrf`, {
       method: "GET",
       headers: {
-        "Content-Type": "application/json",
-        ...(cookies && { Cookie: cookies }), // Forward cookies jika ada
+        accept: "application/json",
+        ...(cookieHeader ? { cookie: cookieHeader } : {}),
+      },
+      cache: "no-store",
+    });
+
+    const bodyText = await upstream.text();
+
+    // Kalau backend error, jangan ditutup-tutupi jadi 500 generik
+    if (!upstream.ok) {
+      return new NextResponse(bodyText || "Upstream CSRF error", {
+        status: upstream.status,
+        headers: {
+          "content-type": upstream.headers.get("content-type") ?? "text/plain",
+        },
+      });
+    }
+
+    // Forward set-cookie (kalau ada)
+    const res = new NextResponse(bodyText, {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
       },
     });
 
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: "Failed to fetch CSRF token" },
-        { status: response.status }
-      );
-    }
+    // Next 16: set-cookie bisa multiple, tapi minimal kita forward yang ada
+    const setCookie = upstream.headers.get("set-cookie");
+    if (setCookie) res.headers.set("set-cookie", setCookie);
 
-    const data = await response.json();
-
-    // Forward cookies dari backend response ke client jika ada
-    const responseHeaders = new Headers();
-    const setCookieHeader = response.headers.get("set-cookie");
-    if (setCookieHeader) {
-      responseHeaders.set("set-cookie", setCookieHeader);
-    }
-
-    return NextResponse.json(data, { headers: responseHeaders });
-  } catch (error) {
-    console.error("Error fetching CSRF token:", error);
+    return res;
+  } catch (err: any) {
+    console.error("CSRF proxy failed:", err);
     return NextResponse.json(
-      { error: "Failed to fetch CSRF token" },
+      { error: "CSRF proxy failed", detail: String(err?.message ?? err) },
       { status: 500 }
     );
   }
 }
-

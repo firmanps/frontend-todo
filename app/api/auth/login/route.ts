@@ -1,133 +1,61 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://todo.firmanps.com/api";
+export async function POST(req: NextRequest) {
+  const BACKEND_URL = process.env.BACKEND_URL ?? "https://todo.firmanps.com";
 
-export async function POST(request: NextRequest) {
   try {
-    // Handle empty body atau invalid JSON
-    let body;
-    try {
-      const text = await request.text();
-      body = text ? JSON.parse(text) : {};
-    } catch (error) {
-      return NextResponse.json(
-        { error: "Invalid JSON in request body" },
-        { status: 400 }
-      );
-    }
+    // Ambil body mentah (biar gak crash kalau backend balikin error/non-json)
+    const bodyText = await req.text();
 
-    // Ambil cookies dari request client
-    const cookies = request.cookies.toString();
+    // Forward cookie header mentah dari client
+    const cookieHeader = req.headers.get("cookie") ?? "";
 
-    // Ambil CSRF token dari header request
-    const csrfToken = request.headers.get("X-CSRF-Token");
+    // Ambil CSRF token (case-insensitive)
+    const csrfToken =
+      req.headers.get("x-csrf-token") ?? req.headers.get("X-CSRF-Token") ?? "";
 
-    const response = await fetch(`${BACKEND_URL}/v1/auth/login`, {
+    const upstream = await fetch(`${BACKEND_URL}/api/v1/auth/login`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        ...(cookies && { Cookie: cookies }), // Forward cookies jika ada
-        ...(csrfToken && { "X-CSRF-Token": csrfToken }), // Forward CSRF token jika ada
+        "content-type": "application/json",
+        accept: "application/json",
+        ...(cookieHeader ? { cookie: cookieHeader } : {}),
+        ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
       },
-      body: JSON.stringify(body),
+      body: bodyText || "{}", // jaga-jaga empty body
+      cache: "no-store",
     });
 
-    const data = await response.json();
+    // Ambil body upstream sebagai text dulu (anti-crash)
+    const upstreamText = await upstream.text();
 
-    if (!response.ok) {
-      return NextResponse.json(data, { status: response.status });
-    }
-
-    // Forward cookies dari backend response ke client
-    const nextResponse = NextResponse.json(data, {
-      status: response.status,
+    // Build response ke client (status sama persis)
+    const res = new NextResponse(upstreamText, {
+      status: upstream.status,
+      headers: {
+        "content-type": upstream.headers.get("content-type") ?? "application/json",
+      },
     });
-    
-    // Forward semua set-cookie headers dari backend ke response
-    // Parse dan set cookies menggunakan NextResponse.cookies API
-    const setCookieHeaders = response.headers.getSetCookie();
-    if (setCookieHeaders && setCookieHeaders.length > 0) {
-      setCookieHeaders.forEach((cookieString) => {
-        try {
-          // Parse cookie string (format: "name=value; Path=/; HttpOnly; SameSite=Lax; Secure")
-          const parts = cookieString.split("; ");
-          const [nameValue] = parts;
-          const [name, ...valueParts] = nameValue.split("=");
-          const value = valueParts.join("="); // Handle values that contain "="
-          
-          if (name && value !== undefined) {
-            // Parse attributes - IMPORTANT: preserve all flags from backend
-            const options: any = {};
-            let hasHttpOnly = false;
-            
-            for (let i = 1; i < parts.length; i++) {
-              const part = parts[i].trim();
-              const equalIndex = part.indexOf("=");
-              const key = equalIndex > 0 ? part.substring(0, equalIndex).trim() : part.trim();
-              const val = equalIndex > 0 ? part.substring(equalIndex + 1).trim() : undefined;
-              const lowerKey = key.toLowerCase();
-              
-              if (lowerKey === "path") {
-                options.path = val || "/";
-              } else if (lowerKey === "domain") {
-                options.domain = val;
-              } else if (lowerKey === "max-age") {
-                options.maxAge = parseInt(val || "0", 10);
-              } else if (lowerKey === "expires") {
-                if (val) {
-                  options.expires = new Date(val);
-                }
-              } else if (lowerKey === "httponly" || lowerKey === "http-only" || key === "HttpOnly") {
-                // Preserve HttpOnly flag - CRITICAL for security
-                // Handle both lowercase and mixed case (HttpOnly)
-                options.httpOnly = true;
-                hasHttpOnly = true;
-              } else if (lowerKey === "secure") {
-                options.secure = true;
-              } else if (lowerKey === "samesite") {
-                const sameSiteValue = val?.toLowerCase() || "lax";
-                options.sameSite = sameSiteValue === "strict" ? "strict" : sameSiteValue === "none" ? "none" : "lax";
-              }
-            }
-            
-            // CRITICAL: For access_token or any auth-related cookie, ensure httpOnly is ALWAYS set
-            // This is a security requirement - access tokens must never be accessible via JavaScript
-            const cookieNameLower = name.toLowerCase();
-            if (
-              cookieNameLower.includes("access_token") || 
-              cookieNameLower.includes("access-token") ||
-              cookieNameLower.includes("token") ||
-              cookieNameLower === "access_token"
-            ) {
-              options.httpOnly = true;
-              hasHttpOnly = true;
-            }
-            
-            // Set cookie menggunakan NextResponse.cookies API
-            // All flags from backend are preserved
-            nextResponse.cookies.set(name, value, options);
-            
-            // Log untuk debugging (remove in production)
-            if (process.env.NODE_ENV === "development") {
-              console.log(`Cookie set: ${name} (httpOnly: ${options.httpOnly || false}, secure: ${options.secure || false})`);
-            }
-          }
-        } catch (error) {
-          console.error(`Error parsing cookie: ${cookieString}`, error);
-        }
-      });
+
+    // Forward semua Set-Cookie dari backend ke browser (PENTING untuk access_token)
+    // Catatan: di beberapa runtime, set-cookie bisa multiple.
+    // Kita coba ambil dengan getSetCookie() kalau ada, fallback ke get("set-cookie")
+    const anyHeaders: any = upstream.headers as any;
+
+    if (typeof anyHeaders.getSetCookie === "function") {
+      const cookies = anyHeaders.getSetCookie() as string[];
+      cookies.forEach((c: string) => res.headers.append("set-cookie", c));
     } else {
-      console.warn("No Set-Cookie headers found in login response");
+      const sc = upstream.headers.get("set-cookie");
+      if (sc) res.headers.set("set-cookie", sc);
     }
 
-    return nextResponse;
-  } catch (error) {
-    console.error("Error in login proxy:", error);
+    return res;
+  } catch (err: any) {
+    console.error("Login proxy failed:", err);
     return NextResponse.json(
-      { error: "Failed to process login request" },
+      { error: "Login proxy failed", detail: String(err?.message ?? err) },
       { status: 500 }
     );
   }
 }
-
