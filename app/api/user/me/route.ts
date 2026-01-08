@@ -22,7 +22,22 @@ export async function GET(request: NextRequest) {
       cache: "no-store",
     });
 
-    const data = await response.json();
+    // Handle empty response atau non-JSON response
+    let data;
+    const contentType = response.headers.get("content-type");
+    
+    if (contentType && contentType.includes("application/json")) {
+      try {
+        const text = await response.text();
+        data = text ? JSON.parse(text) : {};
+      } catch (error) {
+        console.error("Error parsing JSON response:", error);
+        data = { error: "Invalid JSON response" };
+      }
+    } else {
+      // Jika bukan JSON, return empty object
+      data = {};
+    }
 
     // Forward response dari backend (termasuk status code)
     return NextResponse.json(data, { status: response.status });

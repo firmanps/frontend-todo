@@ -3,14 +3,14 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getCsrfToken } from "@/lib/axios";
+import { getCsrfToken, resetCsrfToken } from "@/lib/axios";
 import { ArrowRight, CheckCircle2, Lock, Mail, User } from "lucide-react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { Suspense, useEffect, useState } from "react";
+import { toast } from "@/lib/toast";
 
-export default function AuthPage() {
+function AuthPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -78,6 +78,9 @@ export default function AuthPage() {
         toast.success(loginData.message || "Berhasil masuk ke akun Anda", {
           description: "Selamat datang kembali di TaskFlow.",
         });
+
+        // Reset CSRF token setelah login sukses untuk memastikan token fresh
+        resetCsrfToken();
 
         // Delay untuk memastikan cookies ter-set di browser sebelum redirect
         // Cookies dari backend sudah di-forward oleh API route menggunakan NextResponse.cookies
@@ -290,5 +293,22 @@ export default function AuthPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="text-center">
+            <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-muted-foreground">Memuat...</p>
+          </div>
+        </div>
+      }
+    >
+      <AuthPageContent />
+    </Suspense>
   );
 }

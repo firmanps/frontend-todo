@@ -178,3 +178,80 @@
   }
 }
 
+/* Custom Toast Styles - Orange Theme */
+@layer base {
+  [data-sonner-toaster] {
+    --width: 356px;
+    --border-radius: 0.75rem;
+  }
+
+  [data-sonner-toast] {
+    @apply rounded-xl border shadow-lg backdrop-blur-sm;
+    @apply transition-all duration-300 ease-in-out;
+  }
+
+  [data-sonner-toast][data-type="success"] {
+    @apply bg-gradient-to-r from-orange-50 to-amber-50;
+    @apply dark:from-orange-950/20 dark:to-amber-950/20;
+    @apply border-orange-200 dark:border-orange-800;
+    @apply text-orange-900 dark:text-orange-100;
+  }
+
+  [data-sonner-toast][data-type="error"] {
+    @apply bg-gradient-to-r from-red-50 to-orange-50;
+    @apply dark:from-red-950/30 dark:to-orange-950/30;
+    @apply border-red-200 dark:border-red-800;
+    @apply text-red-900 dark:text-red-100;
+  }
+
+  [data-sonner-toast][data-type="info"] {
+    @apply bg-gradient-to-r from-orange-50 to-amber-50;
+    @apply dark:from-orange-950/20 dark:to-amber-950/20;
+    @apply border-orange-200 dark:border-orange-800;
+    @apply text-orange-900 dark:text-orange-100;
+  }
+
+  [data-sonner-toast][data-type="warning"] {
+    @apply bg-gradient-to-r from-amber-50 to-orange-50;
+    @apply dark:from-amber-950/20 dark:to-orange-950/20;
+    @apply border-amber-200 dark:border-amber-800;
+    @apply text-amber-900 dark:text-amber-100;
+  }
+
+  [data-sonner-toast][data-type="loading"] {
+    @apply bg-gradient-to-r from-orange-50 to-amber-50;
+    @apply dark:from-orange-950/20 dark:to-amber-950/20;
+    @apply border-orange-200 dark:border-orange-800;
+    @apply text-orange-900 dark:text-orange-100;
+  }
+
+  [data-sonner-toast] [data-description] {
+    @apply text-sm opacity-90;
+  }
+
+  [data-sonner-toast] [data-icon] {
+    @apply flex-shrink-0;
+  }
+
+  [data-sonner-toast] [data-button] {
+    @apply rounded-md px-3 py-1.5 text-sm font-medium;
+    @apply transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2;
+  }
+
+  [data-sonner-toast][data-type="success"] [data-button] {
+    @apply bg-orange-600 text-white hover:bg-orange-700;
+    @apply focus:ring-orange-500;
+  }
+
+  [data-sonner-toast][data-type="error"] [data-button] {
+    @apply bg-red-600 text-white hover:bg-red-700;
+    @apply focus:ring-red-500;
+  }
+
+  [data-sonner-toast][data-type="info"] [data-button],
+  [data-sonner-toast][data-type="loading"] [data-button] {
+    @apply bg-orange-600 text-white hover:bg-orange-700;
+    @apply focus:ring-orange-500;
+  }
+}
+

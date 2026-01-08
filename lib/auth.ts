@@ -34,26 +34,57 @@ export async function getMe(): Promise<AuthResponse> {
       },
     });
 
+    // Handle response dengan safe JSON parsing
+    const contentType = response.headers.get("content-type");
+    let data: any = {};
+    
+    if (contentType && contentType.includes("application/json")) {
+      try {
+        const text = await response.text();
+        data = text ? JSON.parse(text) : {};
+      } catch (error) {
+        // Jika JSON parsing gagal, gunakan empty object
+        console.error("Error parsing JSON response:", error);
+        data = {};
+      }
+    }
+
     if (response.ok) {
       // 200 = logged in
-      const user: User = await response.json();
       return {
-        user,
+        user: data as User,
         isAuthenticated: true,
       };
-    } else if (response.status === 401) {
-      // 401 = not logged in
-      return {
-        user: null,
-        isAuthenticated: false,
-      };
+    } else if (response.status === 401 || response.status === 403) {
+      // 401/403 = not logged in atau session invalid
+      const error: any = new Error(data.message || "Unauthorized");
+      error.status = response.status;
+      throw error;
+    } else if (response.status === 404) {
+      // 404 = user not found (akun sudah terhapus)
+      const error: any = new Error(data.message || "User not found");
+      error.status = 404;
+      throw error;
+    } else if (response.status >= 500) {
+      // 500+ = server error, kemungkinan session invalid atau server issue
+      // Untuk endpoint /user/me, error 500 bisa berarti session invalid
+      // Lebih aman untuk logout dan minta user login lagi
+      const error: any = new Error(data.message || "Server error");
+      error.status = response.status;
+      throw error;
     } else {
-      // Error lainnya
-      throw new Error(`Unexpected status: ${response.status}`);
+      // Error lainnya (400, 422, dll) - treat sebagai session invalid untuk safety
+      const error: any = new Error(data.message || `Unexpected status: ${response.status}`);
+      error.status = response.status;
+      throw error;
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error checking authentication:", error);
-    // Jika error, treat sebagai not logged in
+    // Re-throw error dengan status code untuk di-handle oleh AuthContext
+    if (error.status) {
+      throw error;
+    }
+    // Jika error network, treat sebagai not logged in
     return {
       user: null,
       isAuthenticated: false,
