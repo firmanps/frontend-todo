@@ -1,9 +1,16 @@
-
 "use client";
 
 import { Sidebar, SidebarTrigger } from "@/components/Sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -14,14 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { deleteTodo, getTodoById, updateTodo } from "@/lib/api";
 import { toast } from "@/lib/toast";
@@ -29,14 +28,37 @@ import { cn } from "@/lib/utils";
 import { TodoStatus } from "@/types/todo";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
-import { ArrowLeft, Calendar, Edit, Save, Trash2, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Calendar,
+  Check,
+  Edit,
+  Save,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const statusConfig = {
-  TODO: { label: "Todo", variant: "secondary" as const },
-  IN_PROGRESS: { label: "In Progress", variant: "default" as const },
-  COMPLETED: { label: "Completed", variant: "outline" as const },
+  TODO: {
+    label: "Todo",
+    variant: "secondary" as const,
+    color: "bg-gray-100",
+    border: "border-gray-300",
+  },
+  IN_PROGRESS: {
+    label: "In Progress",
+    variant: "default" as const,
+    color: "bg-blue-100",
+    border: "border-blue-300",
+  },
+  COMPLETED: {
+    label: "Completed",
+    variant: "outline" as const,
+    color: "bg-green-100",
+    border: "border-green-300",
+  },
 };
 
 export default function TodoDetailPage() {
@@ -52,6 +74,8 @@ export default function TodoDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [dragStatus, setDragStatus] = useState<TodoStatus | null>(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   // Form state
   const [title, setTitle] = useState("");
@@ -167,6 +191,64 @@ export default function TodoDetailPage() {
     } finally {
       setIsDeleting(false);
       setDeleteDialogOpen(false);
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, newStatus: TodoStatus) => {
+    setDragStatus(newStatus);
+    e.dataTransfer.setData("text/plain", newStatus);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetStatus: TodoStatus) => {
+    e.preventDefault();
+    if (!todo || dragStatus === targetStatus || isUpdatingStatus) return;
+
+    setIsUpdatingStatus(true);
+    try {
+      const updatedTodo = await updateTodo(todoId, { status: targetStatus });
+      setTodo(updatedTodo);
+      setStatus(targetStatus);
+      toast.success(
+        `Status berhasil diubah ke "${statusConfig[targetStatus].label}"`
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Gagal mengubah status";
+      toast.error(errorMessage);
+    } finally {
+      setIsUpdatingStatus(false);
+      setDragStatus(null);
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDragStatus(null);
+  };
+
+  const handleQuickStatusChange = async (newStatus: TodoStatus) => {
+    if (!todo || todo.status === newStatus || isUpdatingStatus) return;
+
+    setIsUpdatingStatus(true);
+    try {
+      const updatedTodo = await updateTodo(todoId, { status: newStatus });
+      setTodo(updatedTodo);
+      setStatus(newStatus);
+      toast.success(
+        `Status berhasil diubah ke "${statusConfig[newStatus].label}"`
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Gagal mengubah status";
+      toast.error(errorMessage);
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
@@ -380,6 +462,98 @@ export default function TodoDetailPage() {
                   </div>
                 )}
 
+                {/* Drag and Drop Status Section - GitHub Style */}
+                <div className="pt-6 border-t border-border">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-foreground mb-3">
+                      Ubah Status dengan Drag & Drop
+                    </h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Drag kartu ke kolom status yang diinginkan, atau klik
+                      tombol status di bawah
+                    </p>
+                  </div>
+
+                  {/* Drag and Drop Columns */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    {(Object.keys(statusConfig) as TodoStatus[]).map(
+                      (statusKey) => {
+                        const statusConfigItem = statusConfig[statusKey];
+                        const isCurrentStatus = todo.status === statusKey;
+                        const isDragOver = dragStatus === statusKey;
+
+                        return (
+                          <div
+                            key={statusKey}
+                            className={cn(
+                              "relative rounded-lg border-2 p-4 min-h-[120px] transition-all duration-200",
+                              statusConfigItem.border,
+                              statusConfigItem.color,
+                              isDragOver && "ring-2 ring-primary ring-offset-2",
+                              isCurrentStatus && "ring-1 ring-primary"
+                            )}
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, statusKey)}
+                            onDragLeave={handleDragEnd}
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <div className="font-medium text-foreground">
+                                  {statusConfigItem.label}
+                                </div>
+                                {isCurrentStatus && (
+                                  <Badge variant="outline" className="text-xs">
+                                    Aktif
+                                  </Badge>
+                                )}
+                              </div>
+                              {isCurrentStatus && (
+                                <Check className="h-4 w-4 text-green-600" />
+                              )}
+                            </div>
+
+                            {/* Draggable Card */}
+                            <div
+                              draggable
+                              className={cn(
+                                "cursor-move select-none rounded-lg border bg-white p-3 shadow-sm transition-transform hover:shadow-md active:scale-95",
+                                isCurrentStatus
+                                  ? "border-primary"
+                                  : "border-border opacity-60"
+                              )}
+                              onDragStart={(e) => handleDragStart(e, statusKey)}
+                              onDragEnd={handleDragEnd}
+                            >
+                              <div className="font-medium text-sm truncate">
+                                {todo.title}
+                              </div>
+                              {todo.description && (
+                                <div className="text-xs text-muted-foreground truncate mt-1">
+                                  {todo.description.substring(0, 50)}
+                                  {todo.description.length > 50 && "..."}
+                                </div>
+                              )}
+                              <div className="text-xs text-muted-foreground mt-2 flex justify-between items-center">
+                                <span>Drag untuk pindah</span>
+                                {isCurrentStatus && (
+                                  <span className="text-primary">●</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                    )}
+                  </div>
+
+                  {isUpdatingStatus && (
+                    <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                      <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                      Mengubah status...
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex items-center gap-1.5 text-xs sm:text-sm text-muted-foreground pt-4 border-t border-border">
                   <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
                   <span>
@@ -401,7 +575,8 @@ export default function TodoDetailPage() {
           <DialogHeader>
             <DialogTitle>Hapus Tugas</DialogTitle>
             <DialogDescription>
-              Apakah Anda yakin ingin menghapus tugas ini? Tindakan ini tidak dapat dibatalkan.
+              Apakah Anda yakin ingin menghapus tugas ini? Tindakan ini tidak
+              dapat dibatalkan.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
